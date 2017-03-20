@@ -89,6 +89,7 @@ if WITH_LINUX_I2C
 endif
 if WITH_MODBUS
   driverexec_PROGRAMS += $(MODBUS_DRIVERLIST)
+endif
 if WITH_MQTT
    driverexec_PROGRAMS += $(MQTT_DRIVERLIST)
 endif
