@@ -56,6 +56,7 @@ addons:
     - libxpm-dev
     - libxml2-utils
     - libmodbus-dev
+    - libmosquitto-dev
 
 # Define at least two jobs in the matrix, to avoid a failing job
 # with "no environment variables set" and have them built (one
