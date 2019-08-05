@@ -18,3 +18,13 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  */
+
+#define SU_VAR_CLEAN_SESSION            "clean_session"
+#define SU_VAR_CLIENT_ID                "client_id"
+#define SU_VAR_USERNAME                 "username"
+#define SU_VAR_PASSWORD                 "password"
+#define SU_VAR_TLS_INSECURE             "tls_insecure"
+#define SU_VAR_TLS_CA_FILE              "tls_ca_file"
+#define SU_VAR_TLS_CA_PATH              "tls_ca_path"
+#define SU_VAR_TLS_CRT_FILE             "tls_crt_file"
+#define SU_VAR_TLS_KEY_FILE             "tls_key_file"

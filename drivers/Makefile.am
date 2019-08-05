@@ -29,7 +29,7 @@ if WITH_MODBUS
   AM_CFLAGS += $(LIBMODBUS_CFLAGS)
 endif
 if WITH_MQTT
-  AM_CFLAGS += $(LIBMOSQUITTO_CFLAGS)
+  AM_CFLAGS += $(LIBMOSQUITTO_CFLAGS) $(LIBJSONC_CFLAGS)
 endif
 
 SERIAL_DRIVERLIST = al175 bcmxcp belkin belkinunv bestfcom	\
@@ -273,7 +273,7 @@ nutdrv_qx_SOURCES += $(NUTDRV_QX_SUBDRIVERS)
 
 # MQTT
 nutdrv_mqtt_SOURCES = nutdrv_mqtt.c
-nutdrv_mqtt_LDADD = $(LDADD) $(LIBMOSQUITTO_LIBS)
+nutdrv_mqtt_LDADD = $(LDADD) $(LIBMOSQUITTO_LIBS) $(LIBJSONC_LIBS)
 
 # ----------------------------------------------------------------------
 # List of header files. The purpose of this list is not dependency

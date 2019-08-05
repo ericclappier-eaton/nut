@@ -25,10 +25,13 @@
  */
 
 #include "main.h"
+#include "nutdrv_mqtt.h"
+#include <openssl/ssl.h>
 #include <mosquitto.h>
+#include <json-c/json.h>
 
 #define DRIVER_NAME	"MQTT driver"
-#define DRIVER_VERSION	"0.03"
+#define DRIVER_VERSION	"0.04"
 
 /* driver description structure */
 upsdrv_info_t upsdrv_info = {
@@ -39,221 +42,281 @@ upsdrv_info_t upsdrv_info = {
 	{ NULL }
 };
 
-
-typedef struct {
-	char  *topic_name;
-	int   topic_qos; /* Default to QOS 0 */
-} topic_info_t;
-
 /* Variables */
 struct mosquitto *mosq = NULL;
-topic_info_t *topics[10] = { NULL }; /* Max of 10 topics! */
-char *client_id = NULL;
-bool clean_session = false; /* true; */
 
 /* Callbacks */
-void mqtt_subscribe_callback(struct mosquitto *mosq, void *obj, int mid, int qos_count, const int *granted_qos);
 void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result);
+void mqtt_disconnect_callback(struct mosquitto *mosq, void *obj, int result);
+void mqtt_log_callback(struct mosquitto *mosq, void *obj, int level, const char *str);
 void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message);
-int mqtt_reconnect();
+void mqtt_subscribe_callback(struct mosquitto *mosq, void *obj, int mid, int qos_count, const int *granted_qos);
+void mqtt_reconnect();
+
+/* Static functions */
+
+static void s_mqtt_loop(void)
+{
+	const time_t startTime = time(NULL);
+	time_t curTime;
+	int rc;
+
+	do {
+		upsdebugx(4, "entering mosquitto_loop()");
+		rc = mosquitto_loop(mosq, 5000 /* timeout */, 1 /* max_packets */);
+		upsdebugx(4, "exited mosquitto_loop(), rc=%d", rc);
+		curTime = time(NULL);
+	} while ((rc == MOSQ_ERR_SUCCESS) && (startTime + 5 > curTime));
+
+	if(rc != MOSQ_ERR_SUCCESS) {
+		upsdebugx(1, "Error: %s", mosquitto_strerror(rc));
+		if (rc == MOSQ_ERR_CONN_LOST)
+			mqtt_reconnect();
+	}
+}
+
+typedef struct
+{
+	const char *in;
+	const char *out;
+} nm2_pairs;
+
+static const nm2_pairs s_nm2_mapping[] = {
+	{ "mbdetnrs/1.0/managers/1/identification/firmwareVersion", "ups.firmware.aux" },
+
+	{ "mbdetnrs/1.0/powerDistributions/1/identification/vendor", "device.mfr" },
+	{ "mbdetnrs/1.0/powerDistributions/1/identification/model", "device.model" },
+	{ "mbdetnrs/1.0/powerDistributions/1/identification/serialNumber", "device.serial" },
+	{ "mbdetnrs/1.0/managers/1/identification/location", "device.location" },
+	{ "mbdetnrs/1.0/managers/1/identification/contact", "device.contact" },
+	{ "mbdetnrs/1.0/powerDistributions/1/identification/firmwareVersion", "ups.firmware" },
+
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/current", "output.current" },
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/frequency", "output.frequency" },
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/voltage", "output.voltage" },
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/percentLoad", "ups.load" },
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/voltage", "battery.voltage" },
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingChargeCapacity", "battery.charge" },
+	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingTime", "battery.runtime" },
+
+	{ NULL, NULL }
+};
+
+static void s_mqtt_nm2_process(const char *path, struct json_object *obj)
+{
+	const nm2_pairs *it = s_nm2_mapping;
+
+	while (it->in) {
+		if (strcmp(path, it->in) == 0) {
+			switch (json_object_get_type(obj)) {
+				case json_type_int:
+				case json_type_double:
+					dstate_setinfo(it->out, "%lf", json_object_get_double(obj));
+					upsdebugx(2, "Mapped property %s to %s value %lf", path, it->out, json_object_get_double(obj));
+					break;
+				case json_type_string:
+					dstate_setinfo(it->out, "%s", json_object_get_string(obj));
+					upsdebugx(2, "Mapped property %s to %s value %s", path, it->out, json_object_get_string(obj));
+					break;
+				default:
+					upsdebugx(2, "No match for property %s", path);
+					break;
+			}
+			return;
+		}
+		it++;
+	}
+}
+
+static void s_mqtt_nm2_walk(const char *path, struct json_object *obj)
+{
+	char newPath[256] = { '\0' };
+	struct json_object_iterator it, itEnd;
+	int index;
+
+	switch (json_object_get_type(obj)) {
+		case json_type_object:
+			itEnd = json_object_iter_end(obj);
+			for (it = json_object_iter_begin(obj); !json_object_iter_equal(&it, &itEnd); json_object_iter_next(&it)) {
+				snprintf(newPath, sizeof(newPath), "%s/%s", path, json_object_iter_peek_name(&it));
+				s_mqtt_nm2_walk(newPath, json_object_iter_peek_value(&it));
+			}
+			break;
+		case json_type_array:
+			for (index = 0; index < json_object_array_length(obj); index++) {
+				snprintf(newPath, sizeof(newPath), "%s/%d", path, index);
+				s_mqtt_nm2_walk(newPath, json_object_array_get_idx(obj, index));
+			}
+			break;
+		default:
+			s_mqtt_nm2_process(path, obj);
+			break;
+	}
+}
+
+static void s_mqtt_nm2_message_callback(const char *topic, void *message, size_t message_len)
+{
+	struct json_tokener *tok = json_tokener_new();
+	struct json_object *json = tok ? json_tokener_parse_ex(tok, (const char*)message, message_len) : NULL;
+
+	if (json) {
+		s_mqtt_nm2_walk(topic, json);
+	}
+	else {
+		upsdebugx(1, "Error: could not parse JSON data on topic %s", topic);
+	}
+	if (json) json_object_put(json);
+	if (tok) json_tokener_free(tok);
+}
 
 /* NUT routines */
 
 void upsdrv_initinfo(void)
 {
-	int rc;
+	upsdebugx(1, "entering %s()", __func__);
 
-	upsdebugx(1, "%s...", __func__);
+	/* First loop to allow connection / subscription */
+	s_mqtt_loop();
 
-	rc = mosquitto_loop(mosq, 2 /* timeout */, 10 /* max_packets */);
-	if(rc) {
-		upsdebugx(1, "Error: %s", mosquitto_strerror(rc));
-		if (rc == MOSQ_ERR_CONN_LOST)
-			mqtt_reconnect();
+	if (!dstate_getinfo("device.mfr")) {
+		fatalx(EXIT_FAILURE, "Failed to process essential data during startup of driver");
 	}
 }
 
 void upsdrv_updateinfo(void)
 {
-	int rc;
+	upsdebugx(1, "entering %s()", __func__);
 
-	upsdebugx(1, "%s...", __func__);
-
-	rc = mosquitto_loop(mosq, 2 /* timeout */, 10 /* max_packets */);
-	if(rc) {
-		upsdebugx(1, "Error: %s", mosquitto_strerror(rc));
-		if (rc == MOSQ_ERR_CONN_LOST)
-			mqtt_reconnect();
-	}
+	s_mqtt_loop();
 }
 
 void upsdrv_shutdown(void)
 {
+	upsdebugx(1, "entering %s()", __func__);
+
 	/* replace with a proper shutdown function */
 	fatalx(EXIT_FAILURE, "shutdown not supported");
 }
 
 void upsdrv_help(void)
 {
+	upsdebugx(1, "entering %s()", __func__);
 }
 
 /* list flags and values that you want to receive via -x */
 void upsdrv_makevartable(void)
 {
-	/* allow '-x topic=<some value>' */
-	addvar(VAR_VALUE, "topics", "Specify the MQTT topic(s) to subscribe to, optionally with QOS");
-	addvar(VAR_VALUE, "client_id", "Specify the MQTT client ID");
-	addvar(VAR_FLAG, "clean_session", "When set, client session won't persist on the broker");
+	upsdebugx(1, "entering %s()", __func__);
+
+	addvar(VAR_FLAG, SU_VAR_CLEAN_SESSION,
+		"When set, client session won't persist on the broker");
+
+	addvar(VAR_VALUE, SU_VAR_CLIENT_ID,
+		"Client ID of MQTT session");
+	addvar(VAR_VALUE | VAR_SENSITIVE, SU_VAR_USERNAME,
+		"Username for authentification");
+	addvar(VAR_VALUE | VAR_SENSITIVE, SU_VAR_PASSWORD,
+		"Password for authentification");
+
+	addvar(VAR_FLAG, SU_VAR_TLS_INSECURE,
+		"When set, do not check server certificate (TLS mode)");
+	addvar(VAR_VALUE, SU_VAR_TLS_CA_FILE,
+		"Path to server certificate authority file (TLS mode)");
+	addvar(VAR_VALUE, SU_VAR_TLS_CA_PATH,
+		"Path to server certificate authority directory (TLS mode)");
+	addvar(VAR_VALUE, SU_VAR_TLS_CRT_FILE,
+		"Path to client certificate (TLS mode)");
+	addvar(VAR_VALUE, SU_VAR_TLS_KEY_FILE,
+		"Path to client private key file (TLS mode)");
 }
 
 void upsdrv_initups(void)
 {
-	char hostname[256];
-	int len;
-	char *bind_address = NULL;
-	int keepalive = 60;
-	int rc, i;
-	int port = 1883;
-	char err[1024];
-	char *arg_topics = NULL;
-	char *topic_ptr, *qos_ptr;
-	char *cur_topic_str;
+	upsdebugx(1, "entering %s()", __func__);
 
-	upsdebugx(1, "%s... with broker %s", __func__, device_path);
+	bool var_insecure = false;
+	bool var_clean_session = true;
+	int var_port = 1883;
+	int var_keepalive = 60;
 
-	/* Get configuration points */
-	/* Topic(s) */
-	arg_topics = getval("topics");
-	if (arg_topics == NULL) {
-		fatalx(EXIT_FAILURE, "No topic specified, aborting");
-	}
-	else {
-		/* Split multiple topics
-		 * Format: topic[:qos][,topic[:qos]]... */
-	 	topic_ptr = strtok(arg_topics, ",");
-		for (i = 0; topic_ptr; i++) {
-			
-			cur_topic_str = xstrdup(topic_ptr);
-	
-			qos_ptr = strchr(cur_topic_str, ':');
-			topics[i] = (topic_info_t *)malloc(sizeof(topic_info_t));
-			if (topics[i]) {
-				/* Process QOS */
-				if (qos_ptr) {
-					*qos_ptr = '\0';
-					topics[i]->topic_qos = atoi(qos_ptr+1);
-				}
-				else {
-					upsdebugx(3, "No QOS specified, defaulting to 0");
-					topics[i]->topic_qos = 0;
-				}
-				/* Process topic */
-				topics[i]->topic_name = xstrdup(cur_topic_str);
+	if (testvar(SU_VAR_TLS_INSECURE))
+		var_insecure = true;
+	if (testvar(SU_VAR_CLEAN_SESSION))
+		var_clean_session = true;
 
-				upsdebugx(1, "Adding topic '%s' with QOS %i",
-							topics[i]->topic_name,
-							topics[i]->topic_qos);
-				/* Cleanup */
-				free(cur_topic_str);
-			}
-			else {
-				free(cur_topic_str);
-				fatalx(EXIT_FAILURE, "Can't allocate memory for topics");
-			}
-			/* Get next topic */
-			topic_ptr = strtok(NULL, ",");
-		}
-
-	}
-
-	/* Should we set clean_session */
-	if (testvar ("clean_session")) {
-		upsdebugx(2, "clean_session set to true, as per request");
-		clean_session = true;
+	if (testvar(SU_VAR_TLS_INSECURE) ||
+		testvar(SU_VAR_TLS_CA_FILE) ||
+		testvar(SU_VAR_TLS_CA_PATH) ||
+		testvar(SU_VAR_TLS_CRT_FILE) ||
+		testvar(SU_VAR_TLS_KEY_FILE)) {
+		var_port = 8883;
 	}
 
 	/* Initialize Mosquitto */
 	mosquitto_lib_init();
 
-	/* Client id */
-	client_id = getval("client_id");
-	if (client_id == NULL) {
-		/* Build client_id for subscription */
-		hostname[0] = '\0';
-		gethostname(hostname, 256);
-		hostname[255] = '\0';
-		len = strlen("nutdrv_mqtt/-") + 6 + strlen(hostname);
-		client_id = malloc(len);
-		if(!client_id){
-			mosquitto_lib_cleanup();
-			fatalx(EXIT_FAILURE, "Error: Out of memory");
-		}
-		snprintf(client_id, len, "nutdrv_mqtt/%d-%s", getpid(), hostname);
-	}
-	upsdebugx(2, "subscribing using id = %s", client_id);
+	{
+		/* Generate default client id */
+		char default_client_id[128] = { '\0' };
+		char hostname[HOST_NAME_MAX] = { '\0' };
+		gethostname(hostname, sizeof(hostname));
+		snprintf(default_client_id, sizeof(default_client_id), "nutdrv_mqtt/%s-%d", hostname, getpid());
 
-	mosq = mosquitto_new(client_id, clean_session, NULL);
-	if(!mosq){
-		mosquitto_lib_cleanup();
-		switch(errno){
-			case ENOMEM:
-				fatalx(EXIT_FAILURE, "Error: Out of memory");
-				break;
-			case EINVAL:
-				fatalx(EXIT_FAILURE, "Error: Invalid id and/or clean_session");
-				break;
-		}
+		/* Create client instance */
+		const char *client_id = testvar(SU_VAR_CLIENT_ID) ? getval(SU_VAR_CLIENT_ID) : default_client_id;
+		mosq = mosquitto_new(client_id, var_clean_session, NULL);
 	}
+
+	if(!mosq) {
+		mosquitto_lib_cleanup();
+		fatalx(EXIT_FAILURE, "Error while creating client instance: %s", strerror(errno));
+	}
+
+	/* Set configuration points */
+	mosquitto_username_pw_set(mosq, getval(SU_VAR_USERNAME), getval(SU_VAR_PASSWORD));
+	mosquitto_tls_set(mosq,
+		getval(SU_VAR_TLS_CA_FILE),
+		getval(SU_VAR_TLS_CA_PATH),
+		getval(SU_VAR_TLS_CRT_FILE),
+		getval(SU_VAR_TLS_KEY_FILE),
+		NULL);
+	mosquitto_tls_insecure_set(mosq, var_insecure);
+	mosquitto_tls_opts_set(mosq,
+		var_insecure ? SSL_VERIFY_NONE : SSL_VERIFY_PEER,
+		NULL,
+		NULL);
 
 	/* Setup callbacks for connection, subscription and messages */
+	mosquitto_log_callback_set(mosq, mqtt_log_callback);
 	mosquitto_connect_callback_set(mosq, mqtt_connect_callback);
-	mosquitto_subscribe_callback_set(mosq, mqtt_subscribe_callback);
+	mosquitto_disconnect_callback_set(mosq, mqtt_disconnect_callback);
 	mosquitto_message_callback_set(mosq, mqtt_message_callback);
+	mosquitto_subscribe_callback_set(mosq, mqtt_subscribe_callback);
 	
-	//rc = mosquitto_connect_srv(mosq, device_path, keepalive, bind_address);
 	/* Connect to the broker */
-	rc = mosquitto_connect_bind(mosq, device_path, port, keepalive, bind_address);
+	int rc = mosquitto_connect(mosq, device_path, var_port, var_keepalive);
 	if(rc) {
+		mosquitto_lib_cleanup();
 
 		if(rc == MOSQ_ERR_ERRNO) {
-#ifndef WIN32
-			if (strerror_r(errno, err, 1024) == 0)
+			char err[1024] = { '\0' };
+#ifdef WIN32
+			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, errno, 0, (LPTSTR)&err, sizeof(err), NULL);
 #else
-			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, errno, 0, (LPTSTR)&err, 1024, NULL);
+			(void)strerror_r(errno, err, sizeof(err));
 #endif
-				upsdebugx(1, "Error: %s", err);
-		}else{
-			upsdebugx(1, "Unable to connect (%d)", rc);
+			fatalx(EXIT_FAILURE, "Error while connecting to MQTT broker: %s (%s)", mosquitto_strerror(rc), err);
+		} else {
+			fatalx(EXIT_FAILURE, "Error while connecting to MQTT broker: %s", mosquitto_strerror(rc));
 		}
-
-		mosquitto_lib_cleanup();
-		fatalx(EXIT_FAILURE, "Error at init time");
 	}
 
-	/* First loop to allow connection / subscription */
-	rc = mosquitto_loop(mosq, 1 /* timeout */, 10 /* max_packets */);
-	if(rc) {
-		upsdebugx(1, "Error: %s", mosquitto_strerror(rc));
-		if (rc == MOSQ_ERR_CONN_LOST)
-			mqtt_reconnect();
-	}
+	upsdebugx(1, "Connected to MQTT broker %s", device_path);
 }
 
 void upsdrv_cleanup(void)
 {
-	int i;
-
-	upsdebugx(1, "%s...", __func__);
-
-	/* TODO: unsubscribe... */
-
-	for (i = 0; topics[i]; i++) {
-		
-		if (topics[i]->topic_name)
-			free(topics[i]->topic_name);
-		
-		free(topics[i]);
-	}
+	upsdebugx(1, "entering %s()", __func__);
 
 	/* Cleanup Mosquitto */
 	mosquitto_destroy(mosq);
@@ -266,66 +329,64 @@ void upsdrv_cleanup(void)
 
 void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result)
 {
-	int i;
-
-	if(!result) {
-		upsdebugx(1, "Connected to host %s", device_path);
-		/* Subscribe to all provided topics */
-		for (i = 0; topics[i]; i++) {
-			if (topics[i]->topic_name)
-				upsdebugx(1, "Subscribing to topic %s", topics[i]->topic_name);
-				mosquitto_subscribe(mosq, NULL,
-									topics[i]->topic_name,
-									topics[i]->topic_qos);
-		}
-		
+	if (result != 0) {
+		upsdebugx(1, "Error inside connection callback, code=%d", result);
 	}
-	else
-		upsdebugx(1, "%s", mosquitto_connack_string(result));
+	else {
+		upsdebugx(2, "Connected to MQTT broker");
+
+		int var_qos = 0;
+		const char *topics[] = {
+			"mbdetnrs/1.0/managers/1/identification",
+			"mbdetnrs/1.0/powerDistributions/1/identification",
+			"mbdetnrs/1.0/powerDistributions/1/inputs/+/measures",
+			"mbdetnrs/1.0/powerDistributions/1/outputs/+/measures",
+			NULL
+		} ;
+		const char **topic;
+
+		for (topic = topics; *topic; topic++) {
+			int rc = mosquitto_subscribe(mosq, NULL, *topic, var_qos);
+			if (rc) {
+				upsdebugx(1, "Error while subscribing to topic %s: %s", *topic, mosquitto_strerror(rc));
+			}
+			else {
+				upsdebugx(2, "Sent subscribe request on topic %s", *topic);
+			}
+		}
+
+	}
+}
+
+void mqtt_disconnect_callback(struct mosquitto *mosq, void *obj, int result)
+{
+	upsdebugx(1, "Disconnected from MQTT broker, code=%d", result);
+	dstate_datastale();
+}
+
+void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message)
+{
+	upsdebugx(3, "Message received on topic[%s]: %.*s", message->topic, (int)message->payloadlen, (const char*)message->payload);
+	s_mqtt_nm2_message_callback(message->topic, message->payload, message->payloadlen);
+	dstate_dataok();
 }
 
 void mqtt_subscribe_callback(struct mosquitto *mosq, void *obj, int mid, int qos_count, const int *granted_qos)
 {
-	int i;
-
-	/* TODO: build a string with granted_qos */
-	upsdebugx(1, "Subscribed to topic %s (msg id: %d) with QOS: %d",
-				topics[mid-1]->topic_name, /* Not sure it's actually stable!! */
-				mid, granted_qos[0]);
-	for(i = 1; i < qos_count; i++) {
-		upsdebugx(1, ", %d", granted_qos[i]);
-	}
+	upsdebugx(1, "Subscribed on topic, mid=%d", mid);
 }
 
-
-void mqtt_message_callback(struct mosquitto *mosq, void *obj, const struct mosquitto_message *message)
+void mqtt_log_callback(struct mosquitto *mosq, void *obj, int level, const char *str)
 {
-/*	int i;
-	bool res; */
-	char *mqtt_message = NULL;
-
-//	if(message->retain && ud->no_retain) return;
-/*	if(ud->filter_outs){
-		for(i=0; i<ud->filter_out_count; i++){
-			mosquitto_topic_matches_sub(ud->filter_outs[i], message->topic, &res);
-			if(res) return;
-		}
-	}
-*/
-	if(message->payloadlen) {
-		upsdebugx(1, "Message received on topic[%s]", message->topic);
-		mqtt_message = malloc(message->payloadlen +1);
-		if(mqtt_message){
-			snprintf(mqtt_message, message->payloadlen +1, "%s", (char*)message->payload);
-			upsdebugx(1, "Message: %s", mqtt_message);
-			//fwrite(message->payload, 1, message->payloadlen, stdout);
-		}
-		else
-			upsdebugx(1, "Error while retrieving message");
-	}
+	upsdebugx(1+level, "moqsuitto log: %s", str);
 }
 
-int mqtt_reconnect()
+void mqtt_reconnect()
 {
-	return mosquitto_reconnect(mosq);
+	while (mosquitto_reconnect(mosq) != MOSQ_ERR_SUCCESS) {
+		upsdebugx(2, "Reconnection attempt failed.");
+		sleep(10);
+	}
+
+	upsdebugx(1, "Reconnection attempt succeeded.");
 }
