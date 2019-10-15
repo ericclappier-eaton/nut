@@ -272,7 +272,7 @@ NUTDRV_QX_SUBDRIVERS = nutdrv_qx_bestups.c nutdrv_qx_blazer-common.c	\
 nutdrv_qx_SOURCES += $(NUTDRV_QX_SUBDRIVERS)
 
 # MQTT
-nutdrv_mqtt_SOURCES = nutdrv_mqtt.c
+nutdrv_mqtt_SOURCES = map_sensor.c nutdrv_mqtt.c
 nutdrv_mqtt_LDADD = $(LDADD) $(LIBMOSQUITTO_LIBS) $(LIBJSONC_LIBS)
 
 # ----------------------------------------------------------------------

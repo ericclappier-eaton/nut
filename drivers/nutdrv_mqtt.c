@@ -26,12 +26,15 @@
 
 #include "main.h"
 #include "nutdrv_mqtt.h"
+#include "map_sensor.h"
 #include <openssl/ssl.h>
 #include <mosquitto.h>
 #include <json-c/json.h>
+#include <regex.h>
 
 #define DRIVER_NAME	"MQTT driver"
 #define DRIVER_VERSION	"0.04"
+#define MAX_SUB_EXPR 5
 
 /* driver description structure */
 upsdrv_info_t upsdrv_info = {
@@ -44,6 +47,7 @@ upsdrv_info_t upsdrv_info = {
 
 /* Variables */
 struct mosquitto *mosq = NULL;
+device_map_t *list_device_root = NULL;
 
 /* Callbacks */
 void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result);
@@ -79,50 +83,292 @@ typedef struct
 {
 	const char *in;
 	const char *out;
+    int (*treatment_ptr)(const char *name, const char *value, char **params, int nb_params);
 } nm2_pairs;
 
-static const nm2_pairs s_nm2_mapping[] = {
-	{ "mbdetnrs/1.0/managers/1/identification/firmwareVersion", "ups.firmware.aux" },
+int treatment_contact_config(const char *name, const char *value, char **params, int nb_params) {
+    if (!(name && value)) return -1;
+    if (!params || nb_params != 2) return -2;
 
-	{ "mbdetnrs/1.0/powerDistributions/1/identification/vendor", "device.mfr" },
-	{ "mbdetnrs/1.0/powerDistributions/1/identification/model", "device.model" },
-	{ "mbdetnrs/1.0/powerDistributions/1/identification/serialNumber", "device.serial" },
-	{ "mbdetnrs/1.0/managers/1/identification/location", "device.location" },
-	{ "mbdetnrs/1.0/managers/1/identification/contact", "device.contact" },
-	{ "mbdetnrs/1.0/powerDistributions/1/identification/firmwareVersion", "ups.firmware" },
+    const char *contact_config[] = {
+        "normal-opened",
+        "normal-closed"
+    };
 
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/current", "output.current" },
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/frequency", "output.frequency" },
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/voltage", "output.voltage" },
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/percentLoad", "ups.load" },
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/voltage", "battery.voltage" },
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingChargeCapacity", "battery.charge" },
-	{ "mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingTime", "battery.runtime" },
+    int index_sensor = map_find_device(list_device_root, params[0]);
+    int index_sub_sensor = map_find_sensor(list_device_root, index_sensor, TYPE_INPUTS, params[1]);
+    if (index_sensor >= 0 && index_sub_sensor >= 0) {
+        char *new_name = NULL;
+        if (asprintf(&new_name, name, index_sensor + 1, index_sub_sensor + 1) != -1) {
+            uint index = atoi(value);
+            if(index >= 0 && index < sizeof(contact_config) / sizeof(char *)) {
+                dstate_setinfo(new_name, "%s", (char *)contact_config[index]);
+                upsdebugx(2, "Convert %s value %s -> %s", new_name, value, (char *)contact_config[index]);
+                free(new_name);
+                return 0;
+            }
+            free(new_name);
+        }
+    }
+    return -3;
+}
 
-	{ NULL, NULL }
+int treatment_contact_status(const char *name, const char *value, char **params, int nb_params) {
+    if (!(name && value)) return -1;
+    if (!params || nb_params != 2) return -2;
+
+    const char *contact_status[] = {
+        "active",
+        "inactive"
+    };
+
+    int index_device = map_find_device(list_device_root, params[0]);
+    int index_sensor = map_find_sensor(list_device_root, index_device, TYPE_INPUTS, params[1]);
+    if (index_device >= 0 && index_sensor >= 0) {
+        char *new_name = NULL;
+        if (asprintf(&new_name, name, index_device + 1, index_sensor + 1) != -1) {
+            uint index = atoi(value);
+            if(index >= 0 && index < sizeof(contact_status) / sizeof(char *)) {
+                dstate_setinfo(new_name, "%s", (char *)contact_status[index]);
+                upsdebugx(2, "Convert %s value %s -> %s", new_name, value, (char *)contact_status[index]);
+                free(new_name);
+                return 0;
+            }
+            free(new_name);
+        }
+    }
+    return -3;
+}
+
+int treatment_temperature_value(const char *name, const char *value, char **params, int nb_params) {
+    if (!(name && value)) return -1;
+    if (!params || nb_params != 2) return -2;
+
+    int index_device = map_find_device(list_device_root, params[0]);
+    if (index_device >= 0) {
+        char *new_name = NULL;
+        if (asprintf(&new_name, name, index_device + 1) != -1) {
+            double double_value = atof(value) - 273.15;
+            dstate_setinfo(new_name, "%.2lf", double_value);
+            upsdebugx(2, "Convert %s value %s -> %.2lf", new_name, value, double_value);
+            free(new_name);
+            return 0;
+        }
+    }
+    return -3;
+}
+
+int treatment_data_device(const char *name, const char *value, char **params, int nb_params) {
+    if (!(name && value)) return -1;
+    if (!params || nb_params != 1) return -2;
+
+    int index_device = map_find_device(list_device_root, params[0]);
+    if (index_device >= 0) {
+        char *new_name = NULL;
+        if (asprintf(&new_name, name, index_device + 1) != -1) {
+            dstate_setinfo(new_name, "%s", value);
+            upsdebugx(2, "Convert %s value %s", new_name, value);
+            free(new_name);
+            return 0;
+        }
+    }
+    return -3;
+}
+
+int treatment_data_sensor(const char *name, const char *value, char **params, int nb_params) {
+    if (!(name && value)) return -1;
+    if (!params || nb_params != 3) return -2;
+
+    const char *type_sensor_name[] = {
+        "temperature",
+        "humidity",
+        "contacts"
+    };
+
+    char *new_name = NULL;
+    int type_sensor = map_get_index_type_sensor(params[1]);
+    if (type_sensor >= 0 && type_sensor < 3) {
+        int index_device = map_find_device(list_device_root, params[0]);
+        int index_sensor = map_find_sensor(list_device_root, index_device, type_sensor, params[2]);
+        if (index_device >= 0 && index_sensor >= 0) {
+            if (asprintf(&new_name, name, index_device + 1, type_sensor_name[type_sensor], index_sensor + 1) != -1) {
+                dstate_setinfo(new_name, "%s", value);
+                upsdebugx(2, "Convert %s value %s", new_name, value);
+                free(new_name);
+                return 0;
+            }
+        }
+    }
+    return -3;
+}
+
+int treatment_device(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+
+    if (map_add_devices(list_device_root, atoi(value)) == 0) {
+        return 0;
+    }
+    return -2;
+}
+
+int treatment_index_device(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 1) return -2;
+
+    char *pch = strrchr(value, '/');
+    if (pch && (uint)(pch - value + 1) < strlen(value)) {
+        if (map_init_device(list_device_root, atoi(params[0]), pch + 1) == 0) {
+            return 0;
+        }
+    }
+    return -3;
+}
+
+int treatment_sensor(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 2) return -2;
+
+    int type_sensor = map_get_index_type_sensor(params[1]);
+    if (type_sensor >= 0) {
+        char *device_key = params[0];
+        if (map_add_sensors(list_device_root, device_key, type_sensor, atoi(value)) == 0) {
+            return 0;
+        }
+    }
+    return -3;
+}
+
+int treatment_index_sensor(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 3) return -2;
+
+    int type_sensor = map_get_index_type_sensor(params[1]);
+    if (type_sensor >= 0) {
+        char *pch = strrchr(value, '/');
+        if (pch && (uint)(pch - value + 1) < strlen(value)) {
+            char *sensor_key = pch + 1;
+            char *device_key = params[0];
+            if (map_init_sensor(list_device_root, device_key, type_sensor, atoi(params[2]), sensor_key) == 0) {
+                return 0;
+            }
+        }
+    }
+    return -3;
+}
+
+static const nm2_pairs s_nm2_mapping[] =  {
+    { "^mbdetnrs/1.0/managers/1/identification/firmwareVersion$", "ups.firmware.aux", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/identification/vendor$", "device.mfr", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/identification/model$", "device.model", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/identification/serialNumber$", "device.serial", NULL },
+	{ "^mbdetnrs/1.0/managers/1/identification/location$", "device.location", NULL },
+	{ "^mbdetnrs/1.0/managers/1/identification/contact$", "device.contact", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/identification/firmwareVersion$", "ups.firmware", NULL },
+
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/current$", "output.current", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/frequency$", "output.frequency", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/voltage$", "output.voltage", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/measures/realtime/percentLoad$", "ups.load", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/voltage$", "battery.voltage", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingChargeCapacity$", "battery.charge", NULL },
+	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingTime$", "battery.runtime", NULL },
+
+    { "^mbdetnrs/1.0/sensors/devices/members@count$", NULL, &treatment_device },
+    { "^mbdetnrs/1.0/sensors/devices/members/([0-9]+)/@id$", NULL, &treatment_index_device },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/identification/manufacturer$", "ambient.%d.mfr", &treatment_data_device },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/identification/model$", "ambient.%d.model", &treatment_data_device },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/identification/serial$", "ambient.%d.serial", &treatment_data_device },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/identification/version$", "ambient.%d.firmware", &treatment_data_device },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/identification/name$", "ambient.%d.name", &treatment_data_device  },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/communication/state$", "ambient.%d.present", &treatment_data_device  },
+
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)/members@count$", NULL, &treatment_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)/members/([0-9]+)/@id$", NULL, &treatment_index_sensor },
+
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/identification/name$", "ambient.%d.%s.name", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/alarms/thresholds/lowCritical$", "ambient.%d.%s.low.critical", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/alarms/thresholds/lowWarning$", "ambient.%d.%s.low.warning", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/alarms/thresholds/highCritical$", "ambient.%d.%s.high.critical", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/alarms/thresholds/highWarning$", "ambient.%d.%s.high.warning", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/temperatures/([^/]+)/measure/current$", "ambient.%d.temperature", &treatment_temperature_value },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)/measure/current$", "ambient.%d.%s", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/configuration/enabled$", "ambient.%d.%s.enable", &treatment_data_sensor },
+
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(digitalInputs)/([^/]+)/identification/name$", "ambient.%d.%s.%d.name", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/digitalInputs/([^/]+)/configuration/activeLow$", "ambient.%d.contacts.%d.config", &treatment_contact_config },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(digitalInputs)/([^/]+)/configuration/enabled$", "ambient.%d.%s.%d.enable", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/digitalInputs/([^/]+)/measure/active$", "ambient.%d.contacts.%d.status", &treatment_contact_status },
+
+    { NULL, NULL, NULL }
 };
 
 static void s_mqtt_nm2_process(const char *path, struct json_object *obj)
 {
 	const nm2_pairs *it = s_nm2_mapping;
+    regex_t preg;
+    regmatch_t match[MAX_SUB_EXPR];
+    int r;
 
+    upsdebugx(2, "s_mqtt_nm2_process: %s", path);
 	while (it->in) {
-		if (strcmp(path, it->in) == 0) {
-			switch (json_object_get_type(obj)) {
-				case json_type_int:
-				case json_type_double:
-					dstate_setinfo(it->out, "%lf", json_object_get_double(obj));
-					upsdebugx(2, "Mapped property %s to %s value %lf", path, it->out, json_object_get_double(obj));
-					break;
-				case json_type_string:
-					dstate_setinfo(it->out, "%s", json_object_get_string(obj));
-					upsdebugx(2, "Mapped property %s to %s value %s", path, it->out, json_object_get_string(obj));
-					break;
-				default:
-					upsdebugx(2, "No match for property %s", path);
-					break;
-			}
-			return;
+        r = regcomp(&preg, it->in, REG_EXTENDED);
+        if (r == 0) {
+            r = regexec(&preg, path, sizeof(match)/sizeof(match[0]), (regmatch_t*)&match, 0);
+            if (r == 0) {
+                upsdebugx(2, "s_mqtt_nm2_process: %s found", path);
+                bool no_error = true;
+                char value[ST_MAX_VALUE_LEN] = "";
+                switch (json_object_get_type(obj)) {
+                    case json_type_boolean:
+                        snprintf(value, sizeof(value), "%d", json_object_get_boolean(obj));
+                        break;
+                    case json_type_int:
+                        snprintf(value, sizeof(value), "%ld", json_object_get_int64(obj));
+                        break;
+                    case json_type_double:
+                        snprintf(value, sizeof(value), "%.2lf", json_object_get_double(obj));
+                        break;
+                    case json_type_string:
+                        snprintf(value, sizeof(value), "%s", json_object_get_string(obj));
+                        break;
+                    default:
+                        upsdebugx(2, "No match for property %s of type %d", path, json_object_get_type(obj));
+                        no_error = false;
+                        break;
+                }
+                if (no_error) {
+                    // special treatment
+                    if (it->treatment_ptr != NULL) {
+                        //printf("preg.re_nsub=%d\n", preg.re_nsub);
+                        char **params = NULL;
+                        uint i;
+                        if (preg.re_nsub > 0) {
+                            params = malloc(sizeof(char *) * preg.re_nsub);
+                            for (i = 0; i < preg.re_nsub; i++) {
+                                params[i] = strndup(path + match[i + 1].rm_so, match[i + 1].rm_eo - match[i + 1].rm_so);
+                                printf("%d: param=%s\n", i, params[i]);
+                            }
+                        }
+                        int r = it->treatment_ptr(it->out, value, params, preg.re_nsub);
+                        if (r < 0) {
+                            printf("********************** Error during converting %s value %s: %d", it->out ? it->out : "", value, r);
+                            upsdebugx(2, "Error during converting %s value %s: %d", it->out ? it->out : "", value, r);
+                        }
+                        for (i = 0; i < preg.re_nsub; i++) {
+                            if (params[i]) free(params[i]);
+                        }
+                        if (params) free(params);
+                    }
+                    // else normal treatment
+                    else {
+                        upsdebugx(2, "Mapped property %s to %s value=%s", path, it->out, value);
+                        dstate_setinfo(it->out, "%s", value);
+                    }
+                }
+                regfree(&preg);
+                return;
+            }
+            regfree(&preg);
 		}
 		it++;
 	}
@@ -133,7 +379,7 @@ static void s_mqtt_nm2_walk(const char *path, struct json_object *obj)
 	char newPath[256] = { '\0' };
 	struct json_object_iterator it, itEnd;
 	int index;
-
+    upsdebugx(2, "s_mqtt_nm2_walk: %s", path);
 	switch (json_object_get_type(obj)) {
 		case json_type_object:
 			itEnd = json_object_iter_end(obj);
@@ -156,17 +402,97 @@ static void s_mqtt_nm2_walk(const char *path, struct json_object *obj)
 
 static void s_mqtt_nm2_message_callback(const char *topic, void *message, size_t message_len)
 {
-	struct json_tokener *tok = json_tokener_new();
-	struct json_object *json = tok ? json_tokener_parse_ex(tok, (const char*)message, message_len) : NULL;
+    regex_t preg;
+    regmatch_t match[MAX_SUB_EXPR];
 
-	if (json) {
-		s_mqtt_nm2_walk(topic, json);
-	}
-	else {
-		upsdebugx(1, "Error: could not parse JSON data on topic %s", topic);
-	}
-	if (json) json_object_put(json);
-	if (tok) json_tokener_free(tok);
+    const char *topics_list[] = {
+        "^mbdetnrs/1.0/managers/1/identification$",
+        "^mbdetnrs/1.0/powerDistributions/1/identification$",
+        //"^mbdetnrs/1.0/powerDistributions/1/(inputs|outputs)/?????/measures$",
+        "^mbdetnrs/1.0/sensors/devices$",
+        "^mbdetnrs/1.0/sensors/devices/([^/]+)/(identification|communication$)$",
+        "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)$",
+        "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)/([^/]+)/(identification|configuration$|measure$)$"
+    };
+
+    bool is_found = false;
+
+    do {
+        /*int r = regcomp(&preg, "^mbdetnrs/1.0/sensors/devices$", REG_EXTENDED);
+        if (r == 0) {
+            r = regexec(&preg, topic, sizeof(match)/sizeof(match[0]), (regmatch_t*)&match, 0);
+            if (r == 0) {
+                // Remove all elements
+                map_remove_devices(list_sensor_root);
+                is_found = true;
+                break;
+            }
+        }*/
+
+        uint nb_topic;
+        for (nb_topic = 0; nb_topic < sizeof(topics_list) / sizeof(char *); nb_topic++) {
+            int r = regcomp(&preg, topics_list[nb_topic], REG_EXTENDED);
+            if (r == 0) {
+                r = regexec(&preg, topic, sizeof(match)/sizeof(match[0]), (regmatch_t*)&match, 0);
+                if (r == 0) {
+                    // TBD: TO REMOVE ???
+                    char *id_sensor = NULL;
+                    char *id_sub_sensor = NULL;
+                    char *type_sensor = NULL;
+                    char *type_function = NULL;
+
+                    if (preg.re_nsub >= 1) {
+                        id_sensor = strndup(topic + match[1].rm_so,
+                                    match[1].rm_eo - match[1].rm_so);
+                    }
+                    if (preg.re_nsub == 2) {
+                        type_function = strndup(topic + match[2].rm_so,
+                                        match[2].rm_eo - match[2].rm_so);
+                    }
+                    else if (preg.re_nsub == 4) {
+                        type_sensor = strndup(topic + match[2].rm_so,
+                                        match[2].rm_eo - match[2].rm_so);
+
+                        id_sub_sensor = strndup(topic + match[3].rm_so,
+                                        match[3].rm_eo - match[3].rm_so);
+
+                        type_function = strndup(topic + match[4].rm_so,
+                                    match[4].rm_eo - match[4].rm_so);
+                    }
+                    printf("id_sensor=%s id_sub_sensor=%s type_sensor=%s type_function=%s\n",
+                           id_sensor ? id_sensor : "", id_sub_sensor ? id_sub_sensor : "",
+                           type_sensor ? type_sensor : "", type_function ? type_function : "");
+                    if (id_sensor) free(id_sensor);
+                    if (id_sub_sensor) free(id_sub_sensor);
+                    if (type_sensor) free(type_sensor);
+                    if (type_function) free(type_function);
+                    regfree(&preg);
+                    is_found = true;
+                    break;
+                }
+                regfree(&preg);
+                printf("Result: %s %d\n", topic, r);
+            }
+            else {
+                printf("Result ERROR: %s %d\n", topic, r);
+            }
+        }
+        break;
+    } while (0);
+
+    if (is_found) {
+        struct json_tokener *tok = json_tokener_new();
+        struct json_object *json = tok ? json_tokener_parse_ex(tok, (const char*)message, message_len) : NULL;
+
+        if (json) {
+            s_mqtt_nm2_walk(topic, json);
+        }
+        else {
+            upsdebugx(1, "Error: could not parse JSON data on topic %s", topic);
+        }
+        if (json) json_object_put(json);
+        if (tok) json_tokener_free(tok);
+    }
 }
 
 /* NUT routines */
@@ -234,10 +560,20 @@ void upsdrv_initups(void)
 {
 	upsdebugx(1, "entering %s()", __func__);
 
+#if 0
+    map_test();
+    exit(EXIT_SUCCESS);
+#endif
+
+
 	bool var_insecure = false;
 	bool var_clean_session = true;
 	int var_port = 1883;
 	int var_keepalive = 60;
+
+    list_device_root = (device_map_t *) malloc(sizeof(device_map_t));
+    memset(list_device_root, 0, sizeof(sizeof(device_map_t)));
+    list_device_root->list_device = NULL; // TBD ???
 
 	if (testvar(SU_VAR_TLS_INSECURE))
 		var_insecure = true;
@@ -292,7 +628,7 @@ void upsdrv_initups(void)
 	mosquitto_disconnect_callback_set(mosq, mqtt_disconnect_callback);
 	mosquitto_message_callback_set(mosq, mqtt_message_callback);
 	mosquitto_subscribe_callback_set(mosq, mqtt_subscribe_callback);
-	
+
 	/* Connect to the broker */
 	int rc = mosquitto_connect(mosq, device_path, var_port, var_keepalive);
 	if(rc) {
@@ -303,7 +639,7 @@ void upsdrv_initups(void)
 #ifdef WIN32
 			FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM, NULL, errno, 0, (LPTSTR)&err, sizeof(err), NULL);
 #else
-			(void)strerror_r(errno, err, sizeof(err));
+            strncpy(err, strerror(errno), sizeof(err));
 #endif
 			fatalx(EXIT_FAILURE, "Error while connecting to MQTT broker: %s (%s)", mosquitto_strerror(rc), err);
 		} else {
@@ -317,6 +653,8 @@ void upsdrv_initups(void)
 void upsdrv_cleanup(void)
 {
 	upsdebugx(1, "entering %s()", __func__);
+    map_remove_devices(list_device_root);
+    if (list_device_root) free(list_device_root);
 
 	/* Cleanup Mosquitto */
 	mosquitto_destroy(mosq);
@@ -341,6 +679,30 @@ void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result)
 			"mbdetnrs/1.0/powerDistributions/1/identification",
 			"mbdetnrs/1.0/powerDistributions/1/inputs/+/measures",
 			"mbdetnrs/1.0/powerDistributions/1/outputs/+/measures",
+            "mbdetnrs/1.0/sensors",
+            "mbdetnrs/1.0/sensors/devices",
+
+            "mbdetnrs/1.0/sensors/devices/+",
+            "mbdetnrs/1.0/sensors/devices/+/identification",
+            "mbdetnrs/1.0/sensors/devices/+/communication",
+            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures",
+            //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+",
+            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/identification",
+            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/configuration",
+            //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/alarms",
+            //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/alarms/thresholds",
+            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/measure",
+            "mbdetnrs/1.0/sensors/devices/+/channels/humidities",
+            //"mbdetnrs/1.0/sensors/devices/+/channels/humidities/+",
+            "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/identification",
+            "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/configuration",
+            "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/measure",
+            //"mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/alarms",
+            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs",
+            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/identification",
+            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/configuration",
+            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/measure",
+
 			NULL
 		} ;
 		const char **topic;
