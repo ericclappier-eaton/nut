@@ -23,7 +23,7 @@
 #include "map_sensor.h"
 #include <search.h>
 
-static int is_index_type_sensor(int index_type_sensor) {
+int map_is_index_type_sensor(int index_type_sensor) {
     return ((index_type_sensor >= 0) && (index_type_sensor < NB_TYPE_SENSOR)) ? 1 : 0;
 }
 
@@ -42,152 +42,326 @@ int map_get_index_type_sensor(char *type_sensor) {
     return -1;
 }
 
-void map_remove_devices(device_map_t *root) {
+int map_get_nb_devices(device_map_t *root) {
+    if (!root) return -1 ;
+
+    return root->nb_device;
+}
+
+int map_get_nb_init_devices(device_map_t *root) {
+    if (!root) return -1 ;
+
+    return root->nb_init_device;
+}
+
+int map_set_nb_init_devices(device_map_t *root, int nb_init_device) {
+    if (!(root && nb_init_device >= 0)) return -1;
+
+    root->nb_init_device = nb_init_device;
+    return 0;
+}
+
+void map_remove_all_devices(device_map_t *root) {
     if (!root) return;
 
-    int iDevice, iTypeSensor, iSubElmt;
-    for (iDevice = 0; iDevice < root->nb_device; iDevice++) {
-        printf("+ free device %d/%s\n", iDevice, root->list_device[iDevice].key_device);
+    int iDevice = 0, iTypeSensor, iSubElmt;
+    device_t *current_device = root->list_device;
+    device_t *next_device = NULL;
+    //for (iDevice = 0; current_device && iDevice < root->nb_device; iDevice++) {
+    while (current_device) {
+        printf("+ free device %d/%s\n", iDevice++, current_device->key_device);
         for (iTypeSensor = 0; iTypeSensor < NB_TYPE_SENSOR; iTypeSensor++) {
-            if (root->list_device[iDevice].list_sensor[iTypeSensor].nb_sensor > 0 && root->list_device[iDevice].list_sensor[iTypeSensor].list_key_sensor) {
-                for(iSubElmt = 0; iSubElmt < root->list_device[iDevice].list_sensor[iTypeSensor].nb_sensor; iSubElmt++) {
-                    printf("+ free sensor %d %d/%s\n", iTypeSensor, iSubElmt, root->list_device[iDevice].list_sensor[iTypeSensor].list_key_sensor[iSubElmt]);
-                    free(root->list_device[iDevice].list_sensor[iTypeSensor].list_key_sensor[iSubElmt]);
+            if (current_device->list_type_sensor[iTypeSensor].nb_sensor > 0 && current_device->list_type_sensor[iTypeSensor].list_sensor) {
+                for(iSubElmt = 0; iSubElmt < current_device->list_type_sensor[iTypeSensor].nb_sensor; iSubElmt++) {
+                    printf("+ free sensor %d %d/%s %d\n", iTypeSensor, iSubElmt,
+                            current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor ? current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor : "",
+                            current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].enable);
+                    if (current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor)
+                        free(current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor);
                 }
-                root->list_device[iDevice].list_sensor[iTypeSensor].nb_sensor = 0;
-                free(root->list_device[iDevice].list_sensor[iTypeSensor].list_key_sensor);
-                root->list_device[iDevice].list_sensor[iTypeSensor].list_key_sensor = NULL;
+                current_device->list_type_sensor[iTypeSensor].nb_sensor = 0;
+                free(current_device->list_type_sensor[iTypeSensor].list_sensor);
+                current_device->list_type_sensor[iTypeSensor].list_sensor = NULL;
             }
         }
-        if (root->list_device[iDevice].key_device) free(root->list_device[iDevice].key_device);
-    }
-    if (root->list_device) {
-        printf("+ free device list\n");
-        free(root->list_device);
+        if (current_device->key_device) free(current_device->key_device);
+        next_device = current_device->next_device;
+        free(current_device);
+        current_device = next_device;
     }
     root->list_device = NULL;
     root->nb_device = 0;
 }
 
-int map_add_devices(device_map_t *root, int nb_device)
-{
-    if (!(root && nb_device > 0)) return -1;
+int map_remove_device(device_map_t *root, int index_device) {
+    if (!(root && index_device >= 0)) return -1;
 
-    printf("map_add_devices add %d\n", nb_device);
-    map_remove_devices(root);
-    root->list_device = (device_t *) malloc(sizeof(device_t) * nb_device);
-    if (root->list_device) {
-        root->nb_device = nb_device;
-        memset(root->list_device, 0, sizeof(sizeof(device_t) * nb_device));
-        int iDevice;
-        for (iDevice = 0; iDevice < nb_device; iDevice++) {
-            root->list_device[iDevice].key_device = NULL;
-            int iTypeSensor;
-            for (iTypeSensor = 0; iTypeSensor < NB_TYPE_SENSOR; iTypeSensor++) {
-                root->list_device[iDevice].list_sensor[iTypeSensor].list_key_sensor = NULL;
-                root->list_device[iDevice].list_sensor[iTypeSensor].nb_sensor = 0;
+    int iDevice = 0, iTypeSensor, iSubElmt;
+    device_t *current_device = root->list_device;
+    device_t *previous_device = NULL;
+    while (current_device && iDevice < index_device) {
+       previous_device = current_device;
+       current_device = current_device->next_device;
+       iDevice++;
+    }
+    if (!current_device && iDevice != index_device) return -2;
+
+    if (current_device) {
+        printf("+ free device %d/%s\n", iDevice, current_device->key_device);
+        for (iTypeSensor = 0; iTypeSensor < NB_TYPE_SENSOR; iTypeSensor++) {
+            if (current_device->list_type_sensor[iTypeSensor].nb_sensor > 0 && current_device->list_type_sensor[iTypeSensor].list_sensor) {
+                for(iSubElmt = 0; iSubElmt < current_device->list_type_sensor[iTypeSensor].nb_sensor; iSubElmt++) {
+                    printf("+ free sensor %d %d/%s %d\n", iTypeSensor, iSubElmt,
+                            current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor ? current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor : "",
+                            current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].enable);
+                    if (current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor)
+                        free(current_device->list_type_sensor[iTypeSensor].list_sensor[iSubElmt].key_sensor);
+                }
+                current_device->list_type_sensor[iTypeSensor].nb_sensor = 0;
+                free(current_device->list_type_sensor[iTypeSensor].list_sensor);
+                current_device->list_type_sensor[iTypeSensor].list_sensor = NULL;
             }
         }
+        if (current_device->key_device) free(current_device->key_device);
+        if (previous_device) previous_device->next_device = current_device->next_device;
+        else root->list_device = current_device->next_device;
+        free(current_device);
+        root->nb_device--;
+        return 0;
+    }
+    return -3;
+}
+
+int map_add_device(device_map_t *root, int index_device, char *key_device)
+{
+    if (!(root && key_device)) return -1;
+
+    printf("map_add_device add %d/%s\n", index_device, key_device);
+    int iDevice = 0;
+    device_t *current_device = root->list_device;
+    device_t *previous_device = NULL;
+    while (current_device && (index_device == -1 || iDevice < index_device)) {
+       previous_device = current_device;
+       current_device = current_device->next_device;
+       iDevice++;
+    }
+    if (index_device != -1 && iDevice != index_device) return -2;
+
+    device_t *new_device = (device_t *) malloc(sizeof(device_t));
+    if (new_device) {
+        memset(new_device, 0, sizeof(device_t));
+        new_device->key_device = strdup(key_device);;
+        int iTypeSensor;
+        for (iTypeSensor = 0; iTypeSensor < NB_TYPE_SENSOR; iTypeSensor++) {
+            new_device->list_type_sensor[iTypeSensor].list_sensor = NULL;
+            new_device->list_type_sensor[iTypeSensor].nb_sensor = 0;
+        }
+        if (previous_device) previous_device->next_device = new_device;
+        else root->list_device = new_device;
+        new_device->next_device = current_device;
+        root->nb_device++;
         return 0;
     }
     return -2;
 }
 
-int map_init_device(device_map_t *root, int index_device, char *key_device)
-{
-    if (!(root && index_device >= 0 &&
-          index_device < root->nb_device && key_device)) return -1;
-    if (!(root->list_device)) return -2;
+int map_move_device(device_map_t *root, int index_device, int new_index_device) {
+    if (!(root && index_device >= 0)) return -1;
 
-    printf("map_init_device init %d/%s\n", index_device, key_device);
-    root->list_device[index_device].key_device = strdup(key_device);
+    printf("map_move_device move from %d to %d\n", index_device, new_index_device);
+    int i_src_device = 0;
+    device_t *src_device = root->list_device;
+    device_t *previous_src_device = NULL;
+    while (src_device && i_src_device < index_device) {
+       previous_src_device = src_device;
+       src_device =src_device->next_device;
+       i_src_device++;
+    }
+    if (i_src_device != index_device) return -2;
+
+    int i_dest_device = 0;
+    device_t *dest_device = root->list_device;
+    device_t *previous_dest_device = NULL;
+    while (dest_device && (new_index_device == -1 || i_dest_device < new_index_device)) {
+        previous_dest_device = dest_device;
+        dest_device = dest_device->next_device;
+        i_dest_device++;
+    }
+    if (new_index_device != -1 && i_dest_device != new_index_device) return -3;
+
+    if (src_device->next_device != dest_device) {
+        if (previous_src_device) previous_src_device->next_device = src_device->next_device;
+        else root->list_device = src_device->next_device;
+        if (dest_device) {
+            src_device->next_device = dest_device;
+            if (previous_dest_device) previous_dest_device->next_device = src_device;
+            else root->list_device = src_device;
+        }
+        else {
+            src_device->next_device = NULL;
+            if (previous_dest_device) previous_dest_device->next_device = src_device;
+        }
+    }
     return 0;
 }
 
-int map_find_device(device_map_t *root, char *key_device)
+int map_get_index_device(device_map_t *root, char *key_device)
 {
     if (!(root && key_device)) return -1;
-    if (!(root->list_device)) return -2;
 
-    int iDevice;
-    for(iDevice = 0; iDevice < root->nb_device; iDevice++) {
-        if (strcmp(root->list_device[iDevice].key_device, key_device) == 0) {
+    int iDevice = 0;
+    device_t *current_device = root->list_device;
+    //for (iDevice = 0; current_device && iDevice < root->nb_device; iDevice++) {
+    while (current_device) {
+        if (strcmp(current_device->key_device, key_device) == 0) {
             printf("map_find_device %d/%s\n", iDevice, key_device);
             return iDevice;
         }
+        current_device = current_device->next_device;
+        iDevice++;
     }
-    printf("map_find_device not found /%s\n", key_device);
-    return -3;
+    printf("map_find_device not found %s\n", key_device);
+    return -2;
+}
+
+device_t *map_find_device(device_map_t *root, char *key_device)
+{
+    if (!(root && key_device)) return NULL;
+
+    int iDevice = 0;
+    device_t *current_device = root->list_device;
+    while (current_device) {
+        if (strcmp(current_device->key_device, key_device) == 0) {
+            printf("map_find_device %d/%s\n", iDevice, key_device);
+            return current_device;
+        }
+        current_device = current_device->next_device;
+        iDevice++;
+    }
+    printf("map_find_device not found %s\n", key_device);
+    return NULL;
+}
+
+device_t *map_find_device_by_index(device_map_t *root, int index_device)
+{
+    if (!(root && index_device >= 0)) return NULL;
+
+    int iDevice = 0;
+    device_t *current_device = root->list_device;
+    while (current_device && iDevice < index_device) {
+        current_device = current_device->next_device;
+        iDevice++;
+    }
+    return current_device;
 }
 
 int map_add_sensors(device_map_t *root, char *key_device, int type_sensor, int nb_sensor)
 {
-    if (!(root && key_device && is_index_type_sensor(type_sensor) && nb_sensor > 0)) return -1;
+    if (!(root && key_device && map_is_index_type_sensor(type_sensor) && nb_sensor > 0)) return -1;
 
     printf("map_add_sensors add %s %d\n", key_device, nb_sensor);
 
-    int index_device = map_find_device(root, key_device);
-    if (index_device >= 0) {
-        if (root->list_device[index_device].list_sensor[type_sensor].nb_sensor > 0 && root->list_device[index_device].list_sensor[type_sensor].list_key_sensor) {
-            int iSubElmt;
-            for(iSubElmt = 0; iSubElmt < root->list_device[index_device].list_sensor[type_sensor].nb_sensor; iSubElmt++) {
-                printf("+ sub free_element of %s\n", root->list_device[index_device].list_sensor[type_sensor].list_key_sensor[iSubElmt]);
-                free(root->list_device[index_device].list_sensor[type_sensor].list_key_sensor[iSubElmt]);
-            }
-            root->list_device[index_device].list_sensor[type_sensor].nb_sensor = 0;
-            free(root->list_device[index_device].list_sensor[type_sensor].list_key_sensor);
-            root->list_device[index_device].list_sensor[type_sensor].list_key_sensor = NULL;
+    device_t *device = map_find_device(root, key_device);
+    if (!device) return -2;
+
+    if (device->list_type_sensor[type_sensor].nb_sensor > 0 &&
+        device->list_type_sensor[type_sensor].list_sensor) {
+        int iSubElmt;
+        for(iSubElmt = 0; iSubElmt < device->list_type_sensor[type_sensor].nb_sensor; iSubElmt++) {
+            printf("+ sub free_element of %s\n",
+            device->list_type_sensor[type_sensor].list_sensor[iSubElmt].key_sensor ?
+            device->list_type_sensor[type_sensor].list_sensor[iSubElmt].key_sensor : "");
+            if (device->list_type_sensor[type_sensor].list_sensor[iSubElmt].key_sensor)
+                free(device->list_type_sensor[type_sensor].list_sensor[iSubElmt].key_sensor);
         }
-        root->list_device[index_device].list_sensor[type_sensor].list_key_sensor = (char **) malloc(sizeof(char *) * nb_sensor);
-        if (root->list_device[index_device].list_sensor[type_sensor].list_key_sensor) {
-            memset(root->list_device[index_device].list_sensor[type_sensor].list_key_sensor, 0, sizeof(sizeof(char *) * nb_sensor));
-            int iSubElmt;
-            for(iSubElmt = 0; iSubElmt < nb_sensor; iSubElmt++) {
-                root->list_device[index_device].list_sensor[type_sensor].list_key_sensor[iSubElmt] = NULL;
-            }
-            root->list_device[index_device].list_sensor[type_sensor].nb_sensor = nb_sensor;
-            return 0;
+        device->list_type_sensor[type_sensor].nb_sensor = 0;
+        free(device->list_type_sensor[type_sensor].list_sensor);
+        device->list_type_sensor[type_sensor].list_sensor = NULL;
+    }
+    device->list_type_sensor[type_sensor].list_sensor = (sensor_t *) malloc(sizeof(sensor_t) * nb_sensor);
+    if (device->list_type_sensor[type_sensor].list_sensor) {
+        memset(device->list_type_sensor[type_sensor].list_sensor, 0, sizeof(sizeof(sensor_t) * nb_sensor));
+        int iSubElmt;
+        for(iSubElmt = 0; iSubElmt < nb_sensor; iSubElmt++) {
+            device->list_type_sensor[type_sensor].list_sensor[iSubElmt].enable = -1;
+            device->list_type_sensor[type_sensor].list_sensor[iSubElmt].key_sensor = NULL;
         }
-        return -2;
+        device->list_type_sensor[type_sensor].nb_sensor = nb_sensor;
+        return 0;
     }
     return -3;
 }
 
 int map_init_sensor(device_map_t *root, char *key_device, int type_sensor, int index_sensor, char *key_sensor)
 {
-    if (!(root && key_device && is_index_type_sensor(type_sensor) && index_sensor >= 0 && key_sensor)) return -1;
+    if (!(root && key_device && map_is_index_type_sensor(type_sensor) && index_sensor >= 0 && key_sensor)) return -1;
 
     printf("map_init_sensor init %s/%d/%s\n", key_device, index_sensor, key_sensor);
 
-    int index_device = map_find_device(root, key_device);
-    if (index_device >= 0) {
-        if (root->list_device[index_device].list_sensor[type_sensor].nb_sensor > 0 &&
-            root->list_device[index_device].list_sensor[type_sensor].list_key_sensor &&
-            index_sensor < root->list_device[index_device].list_sensor[type_sensor].nb_sensor) {
-            root->list_device[index_device].list_sensor[type_sensor].list_key_sensor[index_sensor] = strdup(key_sensor);
-            return 0;
-        }
-        return -2;
+    device_t *device = map_find_device(root, key_device);
+    if (!device) return -2;
+
+    if (device->list_type_sensor[type_sensor].nb_sensor > 0 &&
+        device->list_type_sensor[type_sensor].list_sensor &&
+        index_sensor < device->list_type_sensor[type_sensor].nb_sensor) {
+        device->list_type_sensor[type_sensor].list_sensor[index_sensor].key_sensor = strdup(key_sensor);
+        return 0;
     }
     return -3;
 }
 
-int map_find_sensor(device_map_t *root, int index_device, int type_sensor, char *key_sensor)
+int map_get_index_sensor(device_map_t *root, int index_device, int type_sensor, char *key_sensor)
 {
-    if (!(root && index_device >= 0 && is_index_type_sensor(type_sensor) && index_device < root->nb_device && key_sensor)) return -1;
+    if (!(root && index_device >= 0 && map_is_index_type_sensor(type_sensor) && index_device < root->nb_device && key_sensor)) return -1;
+
+    device_t *device = map_find_device_by_index(root, index_device);
+    if (!device) return -2;
 
     int iSensor;
-    printf("map_find_sensor: %d/%s\n", index_device, key_sensor);
-    for(iSensor = 0; iSensor < root->list_device[index_device].list_sensor[type_sensor].nb_sensor; iSensor++) {
-        printf("map_find_sensor: %d/%s/%d: test %s\n", index_device, key_sensor, iSensor, root->list_device[index_device].list_sensor[type_sensor].list_key_sensor[iSensor]);
-        if (root->list_device[index_device].list_sensor[type_sensor].list_key_sensor &&
-            strcmp(root->list_device[index_device].list_sensor[type_sensor].list_key_sensor[iSensor], key_sensor) == 0) {
-            printf("map_find_sensor %d/%s/%d\n", index_device, key_sensor, iSensor);
+    printf("map_find_sensor: %s\n", key_sensor);
+    for(iSensor = 0; iSensor < device->list_type_sensor[type_sensor].nb_sensor; iSensor++) {
+        printf("map_find_sensor: %s/%d: test %s\n", key_sensor, iSensor,
+               device->list_type_sensor[type_sensor].list_sensor[iSensor].key_sensor ?
+               device->list_type_sensor[type_sensor].list_sensor[iSensor].key_sensor : "");
+        if (device->list_type_sensor[type_sensor].list_sensor &&
+            device->list_type_sensor[type_sensor].list_sensor[iSensor].key_sensor &&
+            strcmp(device->list_type_sensor[type_sensor].list_sensor[iSensor].key_sensor, key_sensor) == 0) {
+            printf("map_find_sensor %s/%d\n", key_sensor, iSensor);
             return iSensor;
         }
     }
     printf("map_find_sensor not found %d/%s\n", index_device, key_sensor);
-    return -2;  // not found
+    return -3;
+}
+
+int map_set_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor, int enable) {
+    if (!(root && index_device >= 0 && map_is_index_type_sensor(type_sensor) && index_device < root->nb_device && index_sensor >= 0)) return -1;
+
+    device_t *device = map_find_device_by_index(root, index_device);
+    if (!device) return -2;
+
+    if (device->list_type_sensor[type_sensor].list_sensor &&
+        index_sensor < device->list_type_sensor[type_sensor].nb_sensor) {
+        device->list_type_sensor[type_sensor].list_sensor[index_sensor].enable = enable;
+        printf("map_set_sensor_state: %d/%d=%d\n", type_sensor, index_sensor, enable);
+        return 0;
+    }
+    return -3;
+}
+
+int map_get_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor) {
+    if (!(root && index_device >= 0 && map_is_index_type_sensor(type_sensor) && index_device < root->nb_device && index_sensor >= 0)) return -1;
+
+    device_t *device = map_find_device_by_index(root, index_device);
+    if (!device) return -2;
+
+    if (device->list_type_sensor[type_sensor].list_sensor &&
+        index_sensor < device->list_type_sensor[type_sensor].nb_sensor) {
+        printf("map_get_sensor_state: %d/%d=%d\n", type_sensor, index_sensor,
+               device->list_type_sensor[type_sensor].list_sensor[index_sensor].enable);
+        return device->list_type_sensor[type_sensor].list_sensor[index_sensor].enable;
+    }
+    return -3;
 }
 
 /*-------------------------------------------------------------*/
@@ -197,7 +371,7 @@ int map_find_sensor(device_map_t *root, int index_device, int type_sensor, char 
 int nb_error = 0;
 int nb_test = 0;
 
-device_map_t g_list_root = { 0, NULL};
+device_map_t g_list_root = { 0, 0, NULL};
 
 void RESULT_TEST_MSG(int result, const char *msg, ...)
 {
@@ -229,24 +403,35 @@ void RESULT_TEST(int result)
 
 void map_test()
 {
-
     printf("\nBEGIN TEST\n");
 
     //  Safety tests
     {
         RESULT_TEST(map_get_index_type_sensor(NULL) < 0);
-        RESULT_TEST(map_add_devices(NULL, 0) < 0);
-        RESULT_TEST(map_add_devices(&g_list_root, 0) < 0);
-        map_remove_devices(NULL);
-        map_remove_devices(&g_list_root);
-        RESULT_TEST(map_init_device(NULL, -1, NULL) < 0);
-        RESULT_TEST(map_init_device(NULL, 0, NULL) < 0);
-        RESULT_TEST(map_init_device(NULL, 0, "key") < 0);
-        RESULT_TEST(map_init_device(&g_list_root, -1, NULL) < 0);
-        RESULT_TEST(map_init_device(&g_list_root, 0, NULL) < 0);
-        RESULT_TEST(map_init_device(&g_list_root, 0, "key") < 0);
-        RESULT_TEST(map_find_device(NULL, NULL) == -1);
-        RESULT_TEST(map_find_device(&g_list_root, NULL) == -1);
+        RESULT_TEST(map_get_nb_devices(NULL) < 0);
+        RESULT_TEST(map_get_nb_init_devices(NULL) < 0);
+        RESULT_TEST(map_set_nb_init_devices(NULL, -1) < 0);
+        RESULT_TEST(map_set_nb_init_devices(NULL, 0) < 0);
+        RESULT_TEST(map_set_nb_init_devices(&g_list_root, -1) < 0);
+        RESULT_TEST(map_add_device(NULL, -1, NULL) < 0);
+        RESULT_TEST(map_add_device(NULL, -1, "key") < 0);
+        RESULT_TEST(map_add_device(NULL, 0, NULL) < 0);
+        RESULT_TEST(map_add_device(&g_list_root, 0, NULL) < 0);
+        RESULT_TEST(map_move_device(NULL, -1, -1) < 0);
+        RESULT_TEST(map_move_device(NULL, 0, -1) < 0);
+        RESULT_TEST(map_move_device(NULL, -1, 0) < 0);
+        RESULT_TEST(map_move_device(&g_list_root, -1, 0) < 0);
+        RESULT_TEST(map_remove_device(NULL, -1) < 0);
+        RESULT_TEST(map_remove_device(NULL, 0) < 0);
+        RESULT_TEST(map_remove_device(&g_list_root, -1) < 0);
+        map_remove_all_devices(NULL);
+        map_remove_all_devices(&g_list_root);
+        RESULT_TEST(map_get_index_device(NULL, NULL) < 0);
+        RESULT_TEST(map_get_index_device(NULL, "key") < 0);
+        RESULT_TEST(map_get_index_device(&g_list_root, NULL) < 0);
+        RESULT_TEST(map_find_device(NULL, NULL) == NULL);
+        RESULT_TEST(map_find_device(NULL, "key") == NULL);
+        RESULT_TEST(map_find_device(&g_list_root, NULL) == NULL);
         RESULT_TEST(map_add_sensors(NULL, NULL, 0, 0) < 0);
         RESULT_TEST(map_add_sensors(NULL, NULL, 0, 1) < 0);
         RESULT_TEST(map_add_sensors(NULL, "key", 0, 0) < 0);
@@ -269,45 +454,190 @@ void map_test()
         RESULT_TEST(map_init_sensor(&g_list_root, "key", 0, -1, NULL) < 0);
         RESULT_TEST(map_init_sensor(&g_list_root, "key", 0, 0, NULL) < 0);
         RESULT_TEST(map_init_sensor(&g_list_root, "key", 0, 0, NULL) < 0);
-        RESULT_TEST(map_find_sensor(NULL, -1, 0, NULL) < 0);
-        RESULT_TEST(map_find_sensor(NULL, 0, 0, NULL) < 0);
-        RESULT_TEST(map_find_sensor(NULL, -1, 0, "key") < 0);
-        RESULT_TEST(map_find_sensor(&g_list_root, -1, 0, NULL) < 0);
-        RESULT_TEST(map_find_sensor(&g_list_root, 0, 0, NULL) < 0);
-        RESULT_TEST(map_find_sensor(&g_list_root, -1, 0, "key") < 0);
+        RESULT_TEST(map_get_index_sensor(NULL, -1, 0, NULL) < 0);
+        RESULT_TEST(map_get_index_sensor(NULL, 0, 0, NULL) < 0);
+        RESULT_TEST(map_get_index_sensor(NULL, -1, 0, "key") < 0);
+        RESULT_TEST(map_get_index_sensor(&g_list_root, -1, 0, NULL) < 0);
+        RESULT_TEST(map_get_index_sensor(&g_list_root, 0, 0, NULL) < 0);
+        RESULT_TEST(map_get_index_sensor(&g_list_root, -1, 0, "key") < 0);
 
-        RESULT_TEST(map_init_device(&g_list_root, 0, "key") < 0);
         RESULT_TEST(map_init_sensor(&g_list_root, "key", 0, 0, "key") < 0);
     }
 
     //  Functional tests
     {
-        RESULT_TEST_MSG(is_index_type_sensor(-1) == 0, "is_index_type_sensor < 0");
-        RESULT_TEST_MSG(is_index_type_sensor(0) == 1, "is_index_type_sensor 0");
-        RESULT_TEST_MSG(is_index_type_sensor(1) == 1, "is_index_type_sensor 1");
-        RESULT_TEST_MSG(is_index_type_sensor(2) == 1, "is_index_type_sensor 2");
-        RESULT_TEST_MSG(is_index_type_sensor(3) == 0, "is_index_type_sensor 3");
+        RESULT_TEST_MSG(map_is_index_type_sensor(-1) == 0, "is_index_type_sensor < 0");
+        RESULT_TEST_MSG(map_is_index_type_sensor(0) == 1, "is_index_type_sensor 0");
+        RESULT_TEST_MSG(map_is_index_type_sensor(1) == 1, "is_index_type_sensor 1");
+        RESULT_TEST_MSG(map_is_index_type_sensor(2) == 1, "is_index_type_sensor 2");
+        RESULT_TEST_MSG(map_is_index_type_sensor(3) == 0, "is_index_type_sensor 3");
 
-        int nb_device = 3;
-        int nb_sensor = 3;
+        int nb_device = 3, nb_init_device = 3, nb_sensor = 3;
         char device_name[10];
         char sensor_name[10];
         int iDevice, iType, iSensor;
-        RESULT_TEST_MSG(map_add_devices(&g_list_root, nb_device) == 0, "add %d device", nb_device);
+
+        map_set_nb_init_devices(&g_list_root, nb_init_device);
+        RESULT_TEST_MSG(map_get_nb_init_devices(&g_list_root) == nb_init_device, "test nb device %d", nb_init_device);
+
+        printf("**** Add 3 devices and remove by the end\n");
         for (iDevice = 0; iDevice < nb_device; iDevice++) {
-            snprintf(device_name, sizeof(device_name), "%d", iDevice);
-            RESULT_TEST_MSG(map_init_device(&g_list_root, iDevice, device_name) == 0, "init device %d \"%s\"", iDevice, device_name);
-            RESULT_TEST_MSG(map_find_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_add_device(&g_list_root, iDevice, device_name) == 0, "add %d/\"%s\" device", iDevice, device_name);
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
+        }
+        RESULT_TEST_MSG(g_list_root.nb_device == 3, "Nb count device %d=3", g_list_root.nb_device);
+        for (iDevice = nb_device - 1; iDevice >= 0; iDevice--) {
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_remove_device(&g_list_root, iDevice) == 0, "remove device %d \"%s\"", iDevice, device_name);
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) < 0, "not found device \"%s\"", device_name);
+        }
+        RESULT_TEST_MSG(g_list_root.nb_device == 0, "Nb count device %d=0", g_list_root.nb_device);
+
+        printf("**** Add 3 devices and remove by the beginning\n");
+        for (iDevice = 0; iDevice < nb_device; iDevice++) {
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_add_device(&g_list_root, iDevice, device_name) == 0, "add %d \"%s\"", iDevice, device_name);
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
+        }
+        RESULT_TEST_MSG(g_list_root.nb_device == 3, "Nb count device %d=3", g_list_root.nb_device);
+        for (iDevice = 0; iDevice < nb_device; iDevice++) {
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_remove_device(&g_list_root, 0) == 0, "remove device %d \"%s\"", 0, device_name);
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) < 0, "not found device \"%s\"", device_name);
+        }
+        RESULT_TEST_MSG(g_list_root.nb_device == 0, "Nb count device %d=0", g_list_root.nb_device);
+
+        printf("**** Add 3 devices\n");
+        for (iDevice = 0; iDevice < nb_device; iDevice++) {
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_add_device(&g_list_root, iDevice, device_name) == 0, "add %d \"%s\"", 0, device_name);
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
+        }
+        RESULT_TEST_MSG(g_list_root.nb_device == 3, "Nb count device %d=3", g_list_root.nb_device);
+        // Add "DD" at beginning ("DD" -> "A" -> "B" -> "C")
+        printf("**** Add \"DD\" at beginning\n");
+        strncpy(device_name, "DD", sizeof(device_name));
+        RESULT_TEST_MSG(map_add_device(&g_list_root, 0, device_name) == 0, "add \"%s\" device", device_name);
+        RESULT_TEST_MSG(g_list_root.nb_device == 4, "Nb count device %d=4", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == 0, "found index device \"%s\": 0", device_name);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 1, "found index device \"A\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 2, "found index device \"B\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 3, "found index device \"C\": 3");
+        // Add "EE" between "A" and "B" ("DD" -> "A" -> "EE" -> "B" -> "C")
+        printf("**** Add \"EE1\" between \"A\" and \"B\"\n");
+        strncpy(device_name, "EE", sizeof(device_name));
+        RESULT_TEST_MSG(map_add_device(&g_list_root, 2, device_name) == 0, "add \"%s\" device", device_name);
+        RESULT_TEST_MSG(g_list_root.nb_device == 5, "Nb count device %d=5", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 0, "found index device \"DD1\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 1, "found index device \"A\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == 2, "found index device \"%s\": 2", device_name);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 3, "found index device \"C\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 4, "found index device \"C\": 4");
+        // Add "FF" at the end ("DD" -> "A" -> "EE" -> "B" -> "C" -> "FF")
+        printf("**** Add \"FF\" at the end\n");
+        strncpy(device_name, "FF", sizeof(device_name));
+        RESULT_TEST_MSG(map_add_device(&g_list_root, -1, device_name) == 0, "add \"%s\" device at the end", device_name);
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 0, "found index device \"DD\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 1, "found index device \"A\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") == 2, "found index device \"EE\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 3, "found index device \"B\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 4, "found index device \"C\": 4");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == 5, "found index device \"%s\": 5", device_name);
+
+        // Move "FF" at the beginning ("FF" -> "DD" -> "A" -> "EE" -> "B" -> "C")
+        printf("**** Move \"FF\" at the beginning\n");
+        RESULT_TEST_MSG(map_move_device(&g_list_root, 5, 0) == 0, "move \"FF\" device at the beginning");
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "FF") == 0, "found index device \"FF\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 1, "found index device \"DD\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 2, "found index device \"A\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") == 3, "found index device \"EE\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
+
+        // Move "FF" from 0 to 1 ("FF" -> "DD" -> "A" -> "EE" -> "B" -> "C")
+        printf("**** Move \"FF\" from 0 to 1: No changement\n");
+        RESULT_TEST_MSG(map_move_device(&g_list_root, 0, 1) == 0, "move \"2_1\" device from 0 to 1");
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "FF") == 0, "found index device \"FF\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 1, "found index device \"DD\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 2, "found index device \"A\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") == 3, "found index device \"EE\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
+
+        // Move "FF" from 1 to 0 ("DD" -> "FF" -> "A" -> "EE" -> "B" -> "C")
+        printf("**** Move \"FF\" from 1 to 0\n");
+        RESULT_TEST_MSG(map_move_device(&g_list_root, 1, 0) == 0, "move \"FF\" device from 1 to 0");
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 0, "found index device \"DD\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "FF") == 1, "found index device \"FF\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 2, "found index device \"A\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") == 3, "found index device \"EE\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
+
+        // Move "FF" from 1 to 4 ("DD" -> "A" -> "EE" -> "FF" -> "B" -> "C")
+        printf("**** Move \"FF\" from 1 to 4\n");
+        RESULT_TEST_MSG(map_move_device(&g_list_root, 1, 4) == 0, "move \"FF\" device from 1 to 4");
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 0, "found index device \"DD\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 1, "found index device \"A\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") == 2, "found index device \"EE\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "FF") == 3, "found index device \"FF\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
+
+        // Move "FF" at the end ("DD" -> "A" -> "EE" -> "B" -> "C" -> "FF")
+        printf("**** Move \"FF\" at the end\n");
+        RESULT_TEST_MSG(map_move_device(&g_list_root, 3, -1) == 0, "move \"FF\" device at the end");
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") == 0, "found index device \"DD\": 0");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 1, "found index device \"A\": 1");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") == 2, "found index device \"EE\": 2");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 3, "found index device \"B\": 3");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 4, "found index device \"C\": 4");
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "FF") == 5, "found index device \"FF\": 5");
+
+        printf("**** Remove device previously added\n");
+        RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
+        RESULT_TEST_MSG(map_remove_device(&g_list_root, 0) == 0, "remove device %d \"DD\"", 0);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "DD") < 0, "not found device \"DD\"");
+        RESULT_TEST_MSG(map_remove_device(&g_list_root, 1) == 0, "remove device %d \"EE\"", 0);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "EE") < 0, "not found device \"EE\"");
+        RESULT_TEST_MSG(map_remove_device(&g_list_root, 3) == 0, "remove device %d \"FF\"", 0);
+        RESULT_TEST_MSG(map_get_index_device(&g_list_root, "FF") < 0, "not found device \"FF\"");
+        RESULT_TEST_MSG(g_list_root.nb_device == 3, "Nb count device %d=3", g_list_root.nb_device);
+        printf("**** Test initial devices\n");
+        for (iDevice = 0; iDevice < nb_device; iDevice++) {
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
+        }
+        printf("**** Remove all nodes\n");
+        RESULT_TEST_MSG(g_list_root.nb_device == 3, "Nb count device %d=3", g_list_root.nb_device);
+        map_remove_all_devices (&g_list_root);
+        RESULT_TEST_MSG(g_list_root.nb_device == 0, "Nb count device %d=0", g_list_root.nb_device);
+
+        printf("**** Add devices and sensors\n");
+        RESULT_TEST_MSG(map_set_nb_init_devices(&g_list_root, nb_device) == 0, "set init %d device", nb_device);
+        for (iDevice = 0; iDevice < nb_device; iDevice++) {
+            snprintf(device_name, sizeof(device_name), "%c", iDevice + 'A');
+            RESULT_TEST_MSG(map_add_device(&g_list_root, iDevice, device_name) == 0, "add %s device", device_name);
+            RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
             for (iType = 0; iType < NB_TYPE_SENSOR; iType++) {
-                RESULT_TEST_MSG(map_add_sensors(&g_list_root, device_name, iType, nb_sensor) == 0, "add %d sensor in device \"%s\"", nb_sensor, device_name);
+                RESULT_TEST_MSG(map_add_sensors(&g_list_root, device_name, iType, nb_sensor) == 0, "add %d sensor in device \"%s/%d\"", nb_sensor, device_name, iType);
                 for (iSensor = 0; iSensor < nb_sensor; iSensor++) {
-                    snprintf(sensor_name, sizeof(sensor_name), "%s_%d", device_name, iSensor);
+                    snprintf(sensor_name, sizeof(sensor_name), "%s_%d_%d", device_name, iType, iSensor);
                     RESULT_TEST_MSG(map_init_sensor(&g_list_root, device_name, iType, iSensor, sensor_name) == 0, "init sensor \"%s\"", sensor_name);
-                    RESULT_TEST_MSG(map_find_sensor(&g_list_root, iDevice, iType, sensor_name) == iSensor, "found sensor %s", sensor_name);
+                    RESULT_TEST_MSG(map_get_index_sensor(&g_list_root, iDevice, iType, sensor_name) == iSensor, "found sensor %s", sensor_name);
+                    RESULT_TEST_MSG(map_set_sensor_state(&g_list_root, iDevice, iType, iSensor, 1) == 0, "set sensor %s state", sensor_name);
+                    RESULT_TEST_MSG(map_get_sensor_state(&g_list_root, iDevice, iType, iSensor) == 1, "get sensor %s state", sensor_name);
                 }
             }
         }
-        map_remove_devices(&g_list_root);
+        map_remove_all_devices(&g_list_root);
     }
 
     if (nb_error > 0) {
@@ -319,5 +649,3 @@ void map_test()
         printf("\nTEST ENDED: All %d tests passed\n", nb_test);
     }
 }
-
-

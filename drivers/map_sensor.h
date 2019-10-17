@@ -28,42 +28,64 @@ enum TYPE_SENSOR { TYPE_TEMPERATURE,  TYPE_HUMIDITY,  TYPE_INPUTS };
 
 typedef struct
 {
-    int nb_sensor;
-    char **list_key_sensor;
-} sensor_map_t;
+    int enable;
+    char *key_sensor;
+} sensor_t;
 
 typedef struct
 {
+    int nb_sensor;
+    //char **list_key_sensor;
+    sensor_t *list_sensor;
+} sensor_map_t;
+
+typedef struct device
+{
     char *key_device;
-    sensor_map_t list_sensor[NB_TYPE_SENSOR];
+    sensor_map_t list_type_sensor[NB_TYPE_SENSOR];
+    struct device *next_device;
 } device_t;
 
 typedef struct
 {
     int nb_device;
+    int nb_init_device;
     device_t *list_device;
 } device_map_t;
 
+int map_is_index_type_sensor(int index_type_sensor);
+
 int map_get_index_type_sensor(char *type_sensor);
 
-int map_add_devices(device_map_t *root, int nb_device);
+int map_get_nb_devices(device_map_t *root);
 
-void map_remove_devices(device_map_t *root);
+int map_get_nb_init_devices(device_map_t *root);
 
-int map_init_device(device_map_t *root, int index_device, char *key_device);
+int map_set_nb_init_devices(device_map_t *root, int nb_device);
 
-int map_find_device(device_map_t *root, char *key_device);
+int map_add_device(device_map_t *root, int index_device, char *key_device);
+
+int map_move_device(device_map_t *root, int index_device, int new_index_device);
+
+int map_remove_device(device_map_t *root, int index_device);
+
+void map_remove_all_devices(device_map_t *root);
+
+int map_get_index_device(device_map_t *root, char *key_device);
+
+device_t *map_find_device(device_map_t *root, char *key_device);
 
 int map_add_sensors(device_map_t *root, char *key_device, int type_sensor, int nb_sensor);
 
-int map_remove_sensors(device_map_t *root, char *key_device);
-
 int map_init_sensor(device_map_t *root, char *key_device, int type_sensor, int index_sensor, char *key_sensor);
 
-int map_find_sensor(device_map_t *root, int index_device, int type_sensor, char *key_sensor);
+int map_get_index_sensor(device_map_t *root, int index_device, int type_sensor, char *key_sensor);
+
+int map_set_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor, int enable);
+
+int map_get_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor);
 
 // Unitary tests
 void map_test();
 
 #endif /* MAP_SENSOR_H */
-

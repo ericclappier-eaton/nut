@@ -36,6 +36,9 @@
 #define DRIVER_VERSION	"0.04"
 #define MAX_SUB_EXPR 5
 
+#undef MAP_TEST
+//#define MAP_TEST
+
 /* driver description structure */
 upsdrv_info_t upsdrv_info = {
 	DRIVER_NAME,
@@ -48,6 +51,37 @@ upsdrv_info_t upsdrv_info = {
 /* Variables */
 struct mosquitto *mosq = NULL;
 device_map_t *list_device_root = NULL;
+
+const char *ambient_object_name[] =  {
+
+    // TBD: TO REMOVE (FOR TEST)
+    "ambient.%d.key",
+
+    "ambient.%d.firmware",
+    "ambient.%d.mfr",
+    "ambient.%d.model",
+    "ambient.%d.name",
+    "ambient.%d.present",
+    "ambient.%d.serial",
+    "ambient.%d.temperature.name",
+    "ambient.%d.temperature.low.critical",
+    "ambient.%d.temperature.low.warning",
+    "ambient.%d.temperature.high.critical",
+    "ambient.%d.temperature.high.warning",
+    "ambient.%d.temperature",
+    "ambient.%d.humidity.name",
+    "ambient.%d.humidity.low.critical",
+    "ambient.%d.humidity.low.warning",
+    "ambient.%d.humidity.high.critical",
+    "ambient.%d.humidity.high.warning",
+    "ambient.%d.humidity",
+    "ambient.%d.contacts.1.name",
+    "ambient.%d.contacts.1.config",
+    "ambient.%d.contacts.1.status",
+    "ambient.%d.contacts.2.name",
+    "ambient.%d.contacts.2.config",
+    "ambient.%d.contacts.2.status"
+};
 
 /* Callbacks */
 void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result);
@@ -95,11 +129,11 @@ int treatment_contact_config(const char *name, const char *value, char **params,
         "normal-closed"
     };
 
-    int index_sensor = map_find_device(list_device_root, params[0]);
-    int index_sub_sensor = map_find_sensor(list_device_root, index_sensor, TYPE_INPUTS, params[1]);
-    if (index_sensor >= 0 && index_sub_sensor >= 0) {
+    int index_device = map_get_index_device(list_device_root, params[0]);
+    int index_sensor = map_get_index_sensor(list_device_root, index_device, TYPE_INPUTS, params[1]);
+    if (index_device >= 0 && index_sensor >= 0) {
         char *new_name = NULL;
-        if (asprintf(&new_name, name, index_sensor + 1, index_sub_sensor + 1) != -1) {
+        if (asprintf(&new_name, name, index_device + 1, index_sensor + 1) != -1) {
             uint index = atoi(value);
             if(index >= 0 && index < sizeof(contact_config) / sizeof(char *)) {
                 dstate_setinfo(new_name, "%s", (char *)contact_config[index]);
@@ -122,8 +156,8 @@ int treatment_contact_status(const char *name, const char *value, char **params,
         "inactive"
     };
 
-    int index_device = map_find_device(list_device_root, params[0]);
-    int index_sensor = map_find_sensor(list_device_root, index_device, TYPE_INPUTS, params[1]);
+    int index_device = map_get_index_device(list_device_root, params[0]);
+    int index_sensor = map_get_index_sensor(list_device_root, index_device, TYPE_INPUTS, params[1]);
     if (index_device >= 0 && index_sensor >= 0) {
         char *new_name = NULL;
         if (asprintf(&new_name, name, index_device + 1, index_sensor + 1) != -1) {
@@ -144,7 +178,7 @@ int treatment_temperature_value(const char *name, const char *value, char **para
     if (!(name && value)) return -1;
     if (!params || nb_params != 2) return -2;
 
-    int index_device = map_find_device(list_device_root, params[0]);
+    int index_device = map_get_index_device(list_device_root, params[0]);
     if (index_device >= 0) {
         char *new_name = NULL;
         if (asprintf(&new_name, name, index_device + 1) != -1) {
@@ -162,7 +196,7 @@ int treatment_data_device(const char *name, const char *value, char **params, in
     if (!(name && value)) return -1;
     if (!params || nb_params != 1) return -2;
 
-    int index_device = map_find_device(list_device_root, params[0]);
+    int index_device = map_get_index_device(list_device_root, params[0]);
     if (index_device >= 0) {
         char *new_name = NULL;
         if (asprintf(&new_name, name, index_device + 1) != -1) {
@@ -187,9 +221,9 @@ int treatment_data_sensor(const char *name, const char *value, char **params, in
 
     char *new_name = NULL;
     int type_sensor = map_get_index_type_sensor(params[1]);
-    if (type_sensor >= 0 && type_sensor < 3) {
-        int index_device = map_find_device(list_device_root, params[0]);
-        int index_sensor = map_find_sensor(list_device_root, index_device, type_sensor, params[2]);
+    if (map_is_index_type_sensor(type_sensor)) {
+        int index_device = map_get_index_device(list_device_root, params[0]);
+        int index_sensor = map_get_index_sensor(list_device_root, index_device, type_sensor, params[2]);
         if (index_device >= 0 && index_sensor >= 0) {
             if (asprintf(&new_name, name, index_device + 1, type_sensor_name[type_sensor], index_sensor + 1) != -1) {
                 dstate_setinfo(new_name, "%s", value);
@@ -202,10 +236,136 @@ int treatment_data_sensor(const char *name, const char *value, char **params, in
     return -3;
 }
 
+int treatment_enable_sensor(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 3) return -2;
+
+    const char *type_sensor_name[] = {
+        "temperature",
+        "humidity"
+    };
+
+    const char *ambient_object_name[] =  {
+        "ambient.%d.%s"
+        // TBD: Not notified when sensor is enabled
+        //"ambient.%d.%s.name",
+        //"ambient.%d.%s.low.critical",
+        //"ambient.%d.%s.low.warning",
+        //"ambient.%d.%s.high.critical",
+        //"ambient.%d.%s.high.warning"
+    };
+
+    int type_sensor = map_get_index_type_sensor(params[1]);
+    if (type_sensor == TYPE_TEMPERATURE || type_sensor == TYPE_HUMIDITY) {
+        int index_device = map_get_index_device(list_device_root, params[0]);
+        int index_sensor = map_get_index_sensor(list_device_root, index_device, type_sensor, params[2]);
+        if (index_device >= 0 && index_sensor >= 0) {
+            int enable = strcmp(value, "1") == 0 ? 1 : 0;
+            map_set_sensor_state(list_device_root, index_device, type_sensor, index_device, enable);
+            if (!enable) {
+                char *object_name = NULL;
+                uint iObject;
+                for (iObject = 0; iObject < sizeof(ambient_object_name) / sizeof(char *) ; iObject++) {
+                    if (asprintf(&object_name, ambient_object_name[iObject],
+                        index_device + 1, type_sensor_name[type_sensor], index_sensor + 1) != -1) {
+                        dstate_delinfo(object_name);
+                        upsdebugx(2, "Remove %s", object_name);
+                        free(object_name);
+                    }
+                }
+            }
+            return 0;
+        }
+    }
+    return -3;
+}
+
+int treatment_enable_contacts(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 3) return -2;
+
+    const char *ambient_contacts_name[] =  {
+        // TBD: Not notified when sensor is enabled ???
+        "ambient.%d.contacts.%d.status"
+        // TBD: Not notified when sensor is enabled
+        //"ambient.%d.contacts.%d.name",
+        //"ambient.%d.contacts.%d.config"
+    };
+    int type_sensor = map_get_index_type_sensor(params[1]);
+    if (type_sensor == TYPE_INPUTS) {
+        int index_device = map_get_index_device(list_device_root, params[0]);
+        int index_sensor = map_get_index_sensor(list_device_root, index_device, type_sensor, params[2]);
+        if (index_device >= 0 && index_sensor >= 0) {
+            int enable = strcmp(value, "1") == 0 ? 1 : 0;
+            map_set_sensor_state(list_device_root, index_device, type_sensor, index_device, enable);
+            if (!enable) {
+                char *object_name = NULL;
+                uint iObject;
+                for (iObject = 0; iObject < sizeof(ambient_contacts_name) / sizeof(char *) ; iObject++) {
+                    if (asprintf(&object_name, ambient_contacts_name[iObject], index_device + 1, index_sensor + 1) != -1) {
+                        dstate_delinfo(object_name);
+                        upsdebugx(2, "Remove %s", object_name);
+                        free(object_name);
+                    }
+                }
+            }
+            return 0;
+        }
+    }
+    return -3;
+}
+
+int remove_nut_device(int index_device) {
+    if (index_device < 0) return -1;
+
+    char *object_name = NULL;
+    uint iObject;
+    for (iObject = 0; iObject < sizeof(ambient_object_name) / sizeof(char *) ; iObject++) {
+        if (asprintf(&object_name, ambient_object_name[iObject], index_device + 1) != -1) {
+            dstate_delinfo(object_name);
+            upsdebugx(2, "Remove %s", object_name);
+            free(object_name);
+        }
+    }
+    return 0;
+}
+
+int move_nut_device(int index_device, int new_index_device) {
+    if (!(index_device >= 0 && new_index_device >=0)) return -1;
+
+    char *object_name = NULL;
+    char *new_object_name = NULL;
+    uint iObject;
+    for (iObject = 0; iObject < sizeof(ambient_object_name) / sizeof(char *) ; iObject++) {
+        if (asprintf(&object_name, ambient_object_name[iObject], index_device + 1) != -1 &&
+            asprintf(&new_object_name, ambient_object_name[iObject], new_index_device + 1) != -1) {
+            const char *object_value = dstate_getinfo(object_name);
+            upsdebugx(2, "%s -> %s\n", object_name, object_value);
+            if (object_value) {
+                upsdebugx(2, "Change %s -> %s: %s", object_name, new_object_name, object_value);
+                dstate_setinfo(new_object_name, "%s", object_value);
+                dstate_delinfo(object_name);
+            }
+        }
+        if (object_name) free(object_name);
+        if (new_object_name) free(new_object_name);
+    }
+    return 0;
+}
+
 int treatment_device(const char *name, const char *value, char **params, int nb_params) {
     if (!value) return -1;
 
-    if (map_add_devices(list_device_root, atoi(value)) == 0) {
+    int nb_init_device = atoi(value);
+    if (map_set_nb_init_devices(list_device_root, nb_init_device) == 0) {
+        if (nb_init_device == 0) {
+            int iDevice;
+            int nb_device = map_get_nb_devices(list_device_root);
+            for (iDevice = 0; iDevice < nb_device; iDevice++) {
+                remove_nut_device(iDevice);
+            }
+            map_remove_all_devices(list_device_root);
+        }
         return 0;
     }
     return -2;
@@ -215,13 +375,60 @@ int treatment_index_device(const char *name, const char *value, char **params, i
     if (!value) return -1;
     if (!params || nb_params != 1) return -2;
 
+    int res = 0;
+
     char *pch = strrchr(value, '/');
-    if (pch && (uint)(pch - value + 1) < strlen(value)) {
-        if (map_init_device(list_device_root, atoi(params[0]), pch + 1) == 0) {
-            return 0;
+    if (!(pch && (uint)(pch - value + 1) < strlen(value))) {
+        return -3;
+    }
+    char *key_device = pch + 1;
+    int position_device = atoi(params[0]);
+    int index_device = map_get_index_device(list_device_root, key_device);
+    // if device exist, move it if it is not the good place
+    if (index_device >=0) {
+        // If not at the good place
+        if (position_device != index_device) {
+            if (map_move_device(list_device_root, index_device, position_device) != 0) {
+                res = -4;
+            }
+            // move nut device
+            if (move_nut_device(index_device, position_device) != 0) {
+                res = -5;
+            }
+        }
+        // else do nothing
+    }
+    // else device not existed, need to added it
+    else {
+        if (map_add_device(list_device_root, position_device, key_device) != 0) {
+            res = -6;
+        }
+
+        // TBD: TO REMOVE (FOR TEST)
+        char *object_name = NULL;
+        if (asprintf(&object_name, "ambient.%d.key", position_device + 1) != -1) {
+            dstate_setinfo(object_name, "%s", key_device);
         }
     }
-    return -3;
+    // test if some device need to be removed
+    int nb_init_device = map_get_nb_init_devices(list_device_root);
+    int nb_device = map_get_nb_devices(list_device_root);
+    printf("nb_device=%d nb_init_device=%d\n", nb_device, nb_init_device);
+    if (res == 0 && nb_init_device >=0 && nb_device >= 0 && position_device == nb_init_device -1)
+    {
+        int iDevice;
+        for (iDevice = position_device + 1; res >=0 && iDevice < nb_device; iDevice++) {
+            printf("Remove iDevice=%d position_device=%d\n", iDevice, position_device);
+            if (map_remove_device(list_device_root, iDevice) != 0) {
+                res = -7;
+            }
+            // remove nut device
+            if (remove_nut_device(iDevice) != 0) {
+                res = -8;
+            }
+        }
+    }
+    return res;
 }
 
 int treatment_sensor(const char *name, const char *value, char **params, int nb_params) {
@@ -292,11 +499,11 @@ static const nm2_pairs s_nm2_mapping[] =  {
     { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/alarms/thresholds/highWarning$", "ambient.%d.%s.high.warning", &treatment_data_sensor },
     { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/temperatures/([^/]+)/measure/current$", "ambient.%d.temperature", &treatment_temperature_value },
     { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)/measure/current$", "ambient.%d.%s", &treatment_data_sensor },
-    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/configuration/enabled$", "ambient.%d.%s.enable", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities)/([^/]+)/configuration/enabled$", NULL, &treatment_enable_sensor },
 
     { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(digitalInputs)/([^/]+)/identification/name$", "ambient.%d.%s.%d.name", &treatment_data_sensor },
     { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/digitalInputs/([^/]+)/configuration/activeLow$", "ambient.%d.contacts.%d.config", &treatment_contact_config },
-    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(digitalInputs)/([^/]+)/configuration/enabled$", "ambient.%d.%s.%d.enable", &treatment_data_sensor },
+    { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(digitalInputs)/([^/]+)/configuration/enabled$", NULL, &treatment_enable_contacts },
     { "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/digitalInputs/([^/]+)/measure/active$", "ambient.%d.contacts.%d.status", &treatment_contact_status },
 
     { NULL, NULL, NULL }
@@ -351,7 +558,7 @@ static void s_mqtt_nm2_process(const char *path, struct json_object *obj)
                         }
                         int r = it->treatment_ptr(it->out, value, params, preg.re_nsub);
                         if (r < 0) {
-                            printf("********************** Error during converting %s value %s: %d", it->out ? it->out : "", value, r);
+                            printf("********************** Error during converting %s value %s: %d\n", it->out ? it->out : "", value, r);
                             upsdebugx(2, "Error during converting %s value %s: %d", it->out ? it->out : "", value, r);
                         }
                         for (i = 0; i < preg.re_nsub; i++) {
@@ -408,11 +615,12 @@ static void s_mqtt_nm2_message_callback(const char *topic, void *message, size_t
     const char *topics_list[] = {
         "^mbdetnrs/1.0/managers/1/identification$",
         "^mbdetnrs/1.0/powerDistributions/1/identification$",
+        // TBD
         //"^mbdetnrs/1.0/powerDistributions/1/(inputs|outputs)/?????/measures$",
         "^mbdetnrs/1.0/sensors/devices$",
         "^mbdetnrs/1.0/sensors/devices/([^/]+)/(identification|communication$)$",
         "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)$",
-        "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)/([^/]+)/(identification|configuration$|measure$)$"
+        "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures|humidities|digitalInputs)/([^/]+)/(identification|configuration$|alarms|measure$)$"
     };
 
     bool is_found = false;
@@ -560,11 +768,10 @@ void upsdrv_initups(void)
 {
 	upsdebugx(1, "entering %s()", __func__);
 
-#if 0
+#ifdef MAP_TEST
     map_test();
     exit(EXIT_SUCCESS);
 #endif
-
 
 	bool var_insecure = false;
 	bool var_clean_session = true;
@@ -653,7 +860,7 @@ void upsdrv_initups(void)
 void upsdrv_cleanup(void)
 {
 	upsdebugx(1, "entering %s()", __func__);
-    map_remove_devices(list_device_root);
+    map_remove_all_devices(list_device_root);
     if (list_device_root) free(list_device_root);
 
 	/* Cleanup Mosquitto */
