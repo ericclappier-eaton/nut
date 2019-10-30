@@ -1,7 +1,7 @@
 /*  map_sensor.c - Map to manage sensor
  *
  *  Copyright (C)
- *
+ *    2019  Eric Clappier <EricClappier@Eaton.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -23,10 +23,22 @@
 #include "map_sensor.h"
 #include <search.h>
 
+/**
+ * @function map_is_index_type_sensor Test validity of the index of the sensor type
+ * @param root The alarm map
+ * @param index_type_sensor The index of the sensor type
+ * @return {integer} 0 if success else < 0
+ */
 int map_is_index_type_sensor(int index_type_sensor) {
     return ((index_type_sensor >= 0) && (index_type_sensor < NB_TYPE_SENSOR)) ? 1 : 0;
 }
 
+/**
+ * @function map_get_index_type_sensor Get index according the sensor type
+ * @param root The alarm map
+ * @param index_type_sensor The index type sensor to test
+ * @return {integer} 0 if success else < 0
+ */
 int map_get_index_type_sensor(char *type_sensor) {
     if (type_sensor) {
         if (strcmp(type_sensor, "temperatures") == 0) {
@@ -42,18 +54,34 @@ int map_get_index_type_sensor(char *type_sensor) {
     return -1;
 }
 
+/**
+ * @function map_get_nb_devices Return the number of sensor device in the map
+ * @param root The sensor device map
+ * @return {integer} the number of sensor device in the map if success else < 0
+ */
 int map_get_nb_devices(device_map_t *root) {
     if (!root) return -1 ;
 
     return root->nb_device;
 }
 
+/**
+ * @function map_get_nb_init_devices Return the init number of sensor device in the map
+ * @param root The sensor device map
+ * @return {integer} the init number of sensor device in the map if success else < 0
+ */
 int map_get_nb_init_devices(device_map_t *root) {
     if (!root) return -1 ;
 
     return root->nb_init_device;
 }
 
+/**
+ * @function map_set_nb_init_devices Set the init number of sensor device in the map
+ * @param root The sensor device map
+ * @param nb_init_device The init number of sensor device in the map to set
+ * @return {integer} the init number of sensor device in the map if success else < 0
+ */
 int map_set_nb_init_devices(device_map_t *root, int nb_init_device) {
     if (!(root && nb_init_device >= 0)) return -1;
 
@@ -61,13 +89,16 @@ int map_set_nb_init_devices(device_map_t *root, int nb_init_device) {
     return 0;
 }
 
+/**
+ * @function map_remove_all_devices Remove all sensor devices in the map
+ * @param root The sensor device map
+ */
 void map_remove_all_devices(device_map_t *root) {
     if (!root) return;
 
     int iDevice = 0, iTypeSensor, iSubElmt;
     device_t *current_device = root->list_device;
     device_t *next_device = NULL;
-    //for (iDevice = 0; current_device && iDevice < root->nb_device; iDevice++) {
     while (current_device) {
         printf("+ free device %d/%s\n", iDevice++, current_device->key_device);
         for (iTypeSensor = 0; iTypeSensor < NB_TYPE_SENSOR; iTypeSensor++) {
@@ -93,6 +124,12 @@ void map_remove_all_devices(device_map_t *root) {
     root->nb_device = 0;
 }
 
+/**
+ * @function map_remove_device Remove a sensor device in the map
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device to remove
+ * @return {integer} 0 if success else < 0
+ */
 int map_remove_device(device_map_t *root, int index_device) {
     if (!(root && index_device >= 0)) return -1;
 
@@ -132,6 +169,13 @@ int map_remove_device(device_map_t *root, int index_device) {
     return -3;
 }
 
+/**
+ * @function map_add_device Add a sensor device in the map
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device to add
+ * @param key_device The key of the sensor device to add
+ * @return {integer} 0 if success else < 0
+ */
 int map_add_device(device_map_t *root, int index_device, char *key_device)
 {
     if (!(root && key_device)) return -1;
@@ -165,6 +209,13 @@ int map_add_device(device_map_t *root, int index_device, char *key_device)
     return -2;
 }
 
+/**
+ * @function map_move_device Move a sensor device in the map
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device to move
+ * @param new_index_device The new index of the sensor device to move
+ * @return {integer} 0 if success else < 0
+ */
 int map_move_device(device_map_t *root, int index_device, int new_index_device) {
     if (!(root && index_device >= 0)) return -1;
 
@@ -205,13 +256,18 @@ int map_move_device(device_map_t *root, int index_device, int new_index_device) 
     return 0;
 }
 
+/**
+ * @function map_get_index_device Return the index of the sensor device in the map according its key
+ * @param root The sensor device map
+ * @param key_device The key of the sensor device to search
+ * @return {integer} the index of the sensor device found if success else < 0
+ */
 int map_get_index_device(device_map_t *root, char *key_device)
 {
     if (!(root && key_device)) return -1;
 
     int iDevice = 0;
     device_t *current_device = root->list_device;
-    //for (iDevice = 0; current_device && iDevice < root->nb_device; iDevice++) {
     while (current_device) {
         if (strcmp(current_device->key_device, key_device) == 0) {
             printf("map_find_device %d/%s\n", iDevice, key_device);
@@ -224,6 +280,12 @@ int map_get_index_device(device_map_t *root, char *key_device)
     return -2;
 }
 
+/**
+ * @function map_find_device Return the sensor device in the map according its key
+ * @param root The sensor device map
+ * @param key_device The key of the sensor device to search
+ * @return {object} the sensor device found if success else NULL
+ */
 device_t *map_find_device(device_map_t *root, char *key_device)
 {
     if (!(root && key_device)) return NULL;
@@ -242,6 +304,12 @@ device_t *map_find_device(device_map_t *root, char *key_device)
     return NULL;
 }
 
+/**
+ * @function map_find_device_by_index Return the sensor device in the map according its index
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device to search
+ * @return {object} the sensor device found if success else NULL
+ */
 device_t *map_find_device_by_index(device_map_t *root, int index_device)
 {
     if (!(root && index_device >= 0)) return NULL;
@@ -255,6 +323,14 @@ device_t *map_find_device_by_index(device_map_t *root, int index_device)
     return current_device;
 }
 
+/**
+ * @function map_add_sensors Add sub-sensors into a sensor device
+ * @param root The sensor device map
+ * @param key_device The key of the sensor device to add sub-sensors
+ * @param type_sensor Type of the sub-sensors to add
+ * @param nb_sensor The number of sub-sensors to add
+ * @return {integer} 0 if success else < 0
+ */
 int map_add_sensors(device_map_t *root, char *key_device, int type_sensor, int nb_sensor)
 {
     if (!(root && key_device && map_is_index_type_sensor(type_sensor) && nb_sensor > 0)) return -1;
@@ -292,6 +368,15 @@ int map_add_sensors(device_map_t *root, char *key_device, int type_sensor, int n
     return -3;
 }
 
+/**
+ * @function map_init_sensor Init the key of a sub-sensor into a sensor device
+ * @param root The sensor device map
+ * @param key_device The key of the sensor device to init sub-sensor
+ * @param type_sensor Type of the sub-sensors to init
+ * @param index_sensor The index of the sub-sensor to init
+ * @param key_sensor The key of the sub-sensor to init
+ * @return {integer} 0 if success else < 0
+ */
 int map_init_sensor(device_map_t *root, char *key_device, int type_sensor, int index_sensor, char *key_sensor)
 {
     if (!(root && key_device && map_is_index_type_sensor(type_sensor) && index_sensor >= 0 && key_sensor)) return -1;
@@ -310,6 +395,14 @@ int map_init_sensor(device_map_t *root, char *key_device, int type_sensor, int i
     return -3;
 }
 
+/**
+ * @function map_get_index_sensor Return the index of the sub-sensor in a sensor device according its key
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device
+ * @param type_sensor Type of the sub-sensor to search
+ * @param key_sensor The key of the sub-sensor to search
+ * @return {integer} the index of the sub-sensor found if success else < 0
+ */
 int map_get_index_sensor(device_map_t *root, int index_device, int type_sensor, char *key_sensor)
 {
     if (!(root && index_device >= 0 && map_is_index_type_sensor(type_sensor) && index_device < root->nb_device && key_sensor)) return -1;
@@ -334,6 +427,15 @@ int map_get_index_sensor(device_map_t *root, int index_device, int type_sensor, 
     return -3;
 }
 
+/**
+ * @function map_set_sensor_state Set the state of a sub-sensor in a sensor device
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device
+ * @param type_sensor Type of the sub-sensor
+ * @param index_sensor The index of the sub-sensor
+ * @param enable The state of the sub-sensor
+ * @return {integer} 0 if success else < 0
+ */
 int map_set_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor, int enable) {
     if (!(root && index_device >= 0 && map_is_index_type_sensor(type_sensor) && index_device < root->nb_device && index_sensor >= 0)) return -1;
 
@@ -349,6 +451,14 @@ int map_set_sensor_state(device_map_t *root, int index_device, int type_sensor, 
     return -3;
 }
 
+/**
+ * @function map_get_sensor_state Get the state of a sub-sensor in a sensor device
+ * @param root The sensor device map
+ * @param index_device The index of the sensor device
+ * @param type_sensor Type of the sub-sensor
+ * @param index_sensor The index of the sub-sensor
+ * @return {integer} the state of the sub-sensor if success else < 0
+ */
 int map_get_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor) {
     if (!(root && index_device >= 0 && map_is_index_type_sensor(type_sensor) && index_device < root->nb_device && index_sensor >= 0)) return -1;
 
@@ -384,16 +494,18 @@ void RESULT_TEST_MSG(int result, const char *msg, ...)
         va_end(args);
     }
     else {
-        asprintf(&buffer_msg, "Test %d", nb_test);
+        if (asprintf(&buffer_msg, "Test %d", nb_test)) {};
     }
-    if (result) {
-        printf("-> %s OK\n", buffer_msg);
+    if (buffer_msg) {
+        if (result) {
+            printf("-> %s OK\n", buffer_msg);
+        }
+        else {
+            nb_error ++;
+            printf("-> ERROR: %s NOK !!!\n", buffer_msg);
+        }
+        free(buffer_msg);
     }
-    else {
-        nb_error ++;
-        printf("-> ERROR: %s NOK !!!\n", buffer_msg);
-    }
-    if (buffer_msg) free(buffer_msg);
 }
 
 void RESULT_TEST(int result)
@@ -401,11 +513,11 @@ void RESULT_TEST(int result)
     RESULT_TEST_MSG(result, NULL);
 }
 
-void map_test()
+void map_sensor_test()
 {
     printf("\nBEGIN TEST\n");
 
-    //  Safety tests
+    /*  Safety tests */
     {
         RESULT_TEST(map_get_index_type_sensor(NULL) < 0);
         RESULT_TEST(map_get_nb_devices(NULL) < 0);
@@ -464,7 +576,7 @@ void map_test()
         RESULT_TEST(map_init_sensor(&g_list_root, "key", 0, 0, "key") < 0);
     }
 
-    //  Functional tests
+    /*  Functional tests */
     {
         RESULT_TEST_MSG(map_is_index_type_sensor(-1) == 0, "is_index_type_sensor < 0");
         RESULT_TEST_MSG(map_is_index_type_sensor(0) == 1, "is_index_type_sensor 0");
@@ -515,7 +627,7 @@ void map_test()
             RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == iDevice, "found device \"%s\"", device_name);
         }
         RESULT_TEST_MSG(g_list_root.nb_device == 3, "Nb count device %d=3", g_list_root.nb_device);
-        // Add "DD" at beginning ("DD" -> "A" -> "B" -> "C")
+        /* Add "DD" at beginning ("DD" -> "A" -> "B" -> "C") */
         printf("**** Add \"DD\" at beginning\n");
         strncpy(device_name, "DD", sizeof(device_name));
         RESULT_TEST_MSG(map_add_device(&g_list_root, 0, device_name) == 0, "add \"%s\" device", device_name);
@@ -524,7 +636,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "A") == 1, "found index device \"A\": 1");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 2, "found index device \"B\": 2");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 3, "found index device \"C\": 3");
-        // Add "EE" between "A" and "B" ("DD" -> "A" -> "EE" -> "B" -> "C")
+        /* Add "EE" between "A" and "B" ("DD" -> "A" -> "EE" -> "B" -> "C") */
         printf("**** Add \"EE1\" between \"A\" and \"B\"\n");
         strncpy(device_name, "EE", sizeof(device_name));
         RESULT_TEST_MSG(map_add_device(&g_list_root, 2, device_name) == 0, "add \"%s\" device", device_name);
@@ -534,7 +646,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == 2, "found index device \"%s\": 2", device_name);
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 3, "found index device \"C\": 3");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 4, "found index device \"C\": 4");
-        // Add "FF" at the end ("DD" -> "A" -> "EE" -> "B" -> "C" -> "FF")
+        /* Add "FF" at the end ("DD" -> "A" -> "EE" -> "B" -> "C" -> "FF") */
         printf("**** Add \"FF\" at the end\n");
         strncpy(device_name, "FF", sizeof(device_name));
         RESULT_TEST_MSG(map_add_device(&g_list_root, -1, device_name) == 0, "add \"%s\" device at the end", device_name);
@@ -546,7 +658,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 4, "found index device \"C\": 4");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, device_name) == 5, "found index device \"%s\": 5", device_name);
 
-        // Move "FF" at the beginning ("FF" -> "DD" -> "A" -> "EE" -> "B" -> "C")
+        /* Move "FF" at the beginning ("FF" -> "DD" -> "A" -> "EE" -> "B" -> "C") */
         printf("**** Move \"FF\" at the beginning\n");
         RESULT_TEST_MSG(map_move_device(&g_list_root, 5, 0) == 0, "move \"FF\" device at the beginning");
         RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
@@ -557,7 +669,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
 
-        // Move "FF" from 0 to 1 ("FF" -> "DD" -> "A" -> "EE" -> "B" -> "C")
+        /* Move "FF" from 0 to 1 ("FF" -> "DD" -> "A" -> "EE" -> "B" -> "C") */
         printf("**** Move \"FF\" from 0 to 1: No changement\n");
         RESULT_TEST_MSG(map_move_device(&g_list_root, 0, 1) == 0, "move \"2_1\" device from 0 to 1");
         RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
@@ -568,7 +680,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
 
-        // Move "FF" from 1 to 0 ("DD" -> "FF" -> "A" -> "EE" -> "B" -> "C")
+        /* Move "FF" from 1 to 0 ("DD" -> "FF" -> "A" -> "EE" -> "B" -> "C") */
         printf("**** Move \"FF\" from 1 to 0\n");
         RESULT_TEST_MSG(map_move_device(&g_list_root, 1, 0) == 0, "move \"FF\" device from 1 to 0");
         RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
@@ -579,7 +691,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
 
-        // Move "FF" from 1 to 4 ("DD" -> "A" -> "EE" -> "FF" -> "B" -> "C")
+        /* Move "FF" from 1 to 4 ("DD" -> "A" -> "EE" -> "FF" -> "B" -> "C") */
         printf("**** Move \"FF\" from 1 to 4\n");
         RESULT_TEST_MSG(map_move_device(&g_list_root, 1, 4) == 0, "move \"FF\" device from 1 to 4");
         RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);
@@ -590,7 +702,7 @@ void map_test()
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "B") == 4, "found index device \"B\": 4");
         RESULT_TEST_MSG(map_get_index_device(&g_list_root, "C") == 5, "found index device \"C\": 5");
 
-        // Move "FF" at the end ("DD" -> "A" -> "EE" -> "B" -> "C" -> "FF")
+        /* Move "FF" at the end ("DD" -> "A" -> "EE" -> "B" -> "C" -> "FF") */
         printf("**** Move \"FF\" at the end\n");
         RESULT_TEST_MSG(map_move_device(&g_list_root, 3, -1) == 0, "move \"FF\" device at the end");
         RESULT_TEST_MSG(g_list_root.nb_device == 6, "Nb count device %d=6", g_list_root.nb_device);

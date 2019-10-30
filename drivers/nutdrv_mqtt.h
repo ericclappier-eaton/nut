@@ -19,6 +19,10 @@
  *
  */
 
+#define DRIVER_NAME	"MQTT driver"
+#define DRIVER_VERSION	"0.04"
+#define MAX_SUB_EXPR 5
+
 #define SU_VAR_CLEAN_SESSION            "clean_session"
 #define SU_VAR_CLIENT_ID                "client_id"
 #define SU_VAR_USERNAME                 "username"
@@ -28,3 +32,5 @@
 #define SU_VAR_TLS_CA_PATH              "tls_ca_path"
 #define SU_VAR_TLS_CRT_FILE             "tls_crt_file"
 #define SU_VAR_TLS_KEY_FILE             "tls_key_file"
+
+enum ALARM_STATE { ALARM_NEW, ALARM_ACTIVE, ALARM_INACTIVE };

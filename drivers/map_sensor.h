@@ -1,7 +1,7 @@
 /*  map_sensor.h - Map to manage sensor
  *
  *  Copyright (C)
- *
+ *    2019  Eric Clappier <EricClappier@Eaton.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
