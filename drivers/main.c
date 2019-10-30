@@ -411,12 +411,15 @@ static void splitxarg(char *inbuf)
 		val = eqptr;
 	}
 
-	/* see if main handles this first */
-	if (main_arg(buf, val))
-		return;
+    /* see if main handles this first */
+    if (main_arg(buf, val)) {
+        free(buf);
+        return;
+    }
 
-	/* otherwise store it for later */
-	storeval(buf, val);
+    /* otherwise store it for later */
+    storeval(buf, val);
+    free(buf);
 }
 
 /* dump the list from the vartable for external parsers */
