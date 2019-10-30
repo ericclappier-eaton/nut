@@ -18,10 +18,10 @@ endif
 
 cppunittest_CXXFLAGS = $(CPPUNIT_CFLAGS) $(CPPUNIT_CXXFLAGS) $(CPPUNIT_NUT_CXXFLAGS) $(CXXFLAGS)
 cppunittest_LDFLAGS = $(CPPUNIT_LIBS)
-cppunittest_LDADD = ../clients/libnutclient.la
+cppunittest_LDADD = ../clients/libnutclient.la ../drivers/libmap.a
 
 # List of src files for CppUnit tests
-CPPUNITTESTSRC = example.cpp nutclienttest.cpp
+CPPUNITTESTSRC = example.cpp nutclienttest.cpp map_alarm_test.cpp map_sensor_test.cpp
 
 cppunittest_SOURCES = $(CPPUNITTESTSRC) cpputest.cpp
 

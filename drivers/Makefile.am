@@ -275,6 +275,10 @@ nutdrv_qx_SOURCES += $(NUTDRV_QX_SUBDRIVERS)
 nutdrv_mqtt_SOURCES = map_sensor.c map_alarm.c nutdrv_mqtt.c
 nutdrv_mqtt_LDADD = $(LDADD) $(LIBMOSQUITTO_LIBS) $(LIBJSONC_LIBS)
 
+# MQTT test class
+noinst_LIBRARIES = libmap.a
+libmap_a_SOURCES = map_sensor.c map_alarm.c
+
 # ----------------------------------------------------------------------
 # List of header files. The purpose of this list is not dependency
 # tracking (which is automatic), but to ensure these files are

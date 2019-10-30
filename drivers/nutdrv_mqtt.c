@@ -33,9 +33,6 @@
 #include <json-c/json.h>
 #include <regex.h>
 
-#undef MAP_TEST
-//#define MAP_TEST
-
 /*-------------------------------------------------------------*/
 /* driver description structure                                */
 /*-------------------------------------------------------------*/
@@ -1532,12 +1529,6 @@ void upsdrv_makevartable(void)
 void upsdrv_initups(void)
 {
 	upsdebugx(1, "entering %s()", __func__);
-
-#ifdef MAP_TEST
-    map_sensor_test();
-    map_alarm_test();
-    exit(EXIT_SUCCESS);
-#endif
 
 	bool var_insecure = false;
 	bool var_clean_session = true;

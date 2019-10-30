@@ -22,6 +22,10 @@
 #ifndef MAP_ALARM_H
 #define MAP_ALARM_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct
 {
     char *id;
@@ -57,7 +61,8 @@ int map_remove_alarm(alarm_map_t *root, const char *id);
 
 void map_remove_all_alarms(alarm_map_t *root);
 
-// Unitary tests
-void map_alarm_test();
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAP_ALARM_H */

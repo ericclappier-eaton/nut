@@ -24,6 +24,10 @@
 
 #define NB_TYPE_SENSOR 3
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum TYPE_SENSOR { TYPE_TEMPERATURE,  TYPE_HUMIDITY,  TYPE_INPUTS };
 
 typedef struct
@@ -85,7 +89,8 @@ int map_set_sensor_state(device_map_t *root, int index_device, int type_sensor, 
 
 int map_get_sensor_state(device_map_t *root, int index_device, int type_sensor, int index_sensor);
 
-// Unitary tests
-void map_test();
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* MAP_SENSOR_H */
