@@ -1,4 +1,4 @@
-/*  map_sensor.c - Map to manage sensor
+/*  nutdrv_mqtt_map_sensor.c - Map to manage sensor
  *
  *  Copyright (C)
  *    2019  Eric Clappier <EricClappier@Eaton.com>
@@ -20,7 +20,7 @@
  */
 
 #include "main.h"
-#include "map_sensor.h"
+#include "nutdrv_mqtt_map_sensor.h"
 #include <search.h>
 
 /**

@@ -1,4 +1,4 @@
-/* Map_sensor_test - CppUnit map sensor unit test
+/* nutdrv_mqtt_map_sensor_test - CppUnit map sensor unit test
 
    Copyright (C) 2019  Clappier Eric <EricClappier@Eaton.com>
 
@@ -45,7 +45,7 @@ public:
 // Registers the fixture into the 'registry'
 CPPUNIT_TEST_SUITE_REGISTRATION(Map_sensor_test);
 
-#include "../drivers/map_sensor.h"
+#include "../drivers/nutdrv_mqtt_map_sensor.h"
 
 void Map_sensor_test::setUp()
 {

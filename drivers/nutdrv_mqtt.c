@@ -26,8 +26,8 @@
 
 #include "main.h"
 #include "nutdrv_mqtt.h"
-#include "map_sensor.h"
-#include "map_alarm.h"
+#include "nutdrv_mqtt_map_sensor.h"
+#include "nutdrv_mqtt_map_alarm.h"
 #include <openssl/ssl.h>
 #include <mosquitto.h>
 #include <json-c/json.h>

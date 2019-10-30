@@ -1,4 +1,4 @@
-/* Map_alarm_test - CppUnit map alarm unit test
+/* nutdrv_mqtt_map_alarm_test - CppUnit map alarm unit test
 
    Copyright (C) 2019  Clappier Eric <EricClappier@Eaton.com>
 
@@ -45,7 +45,7 @@ public:
 // Registers the fixture into the 'registry'
 CPPUNIT_TEST_SUITE_REGISTRATION(Map_alarm_test);
 
-#include "../drivers/map_alarm.h"
+#include "../drivers/nutdrv_mqtt_map_alarm.h"
 
 void Map_alarm_test::setUp()
 {

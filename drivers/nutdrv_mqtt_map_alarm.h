@@ -1,4 +1,4 @@
-/*  map_alarm.h - Map to manage alarms
+/*  nutdrv_mqtt_map_alarm.h - Map to manage alarms
  *
  *  Copyright (C)
  *    2019  Eric Clappier <EricClappier@Eaton.com>
