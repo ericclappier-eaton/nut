@@ -246,7 +246,7 @@ int nut_remove_device(int index_device) {
     for (iObject = 0; iObject < sizeof(ambient_object_name) / sizeof(char *) ; iObject++) {
         if (asprintf(&object_name, ambient_object_name[iObject], index_device + 1) != -1) {
             dstate_delinfo(object_name);
-            upsdebugx(4, "Remove %s", object_name);
+            upsdebugx(3, "Remove %s", object_name);
             free(object_name);
         }
     }
@@ -271,7 +271,7 @@ int nut_move_device(int index_device, int new_index_device) {
             const char *object_value = dstate_getinfo(object_name);
             //upsdebugx(4, "%s -> %s\n", object_name, object_value);
             if (object_value) {
-                upsdebugx(4, "Change %s -> %s: %s", object_name, new_object_name, object_value);
+                upsdebugx(3, "Change %s -> %s: %s", object_name, new_object_name, object_value);
                 dstate_setinfo(new_object_name, "%s", object_value);
                 dstate_delinfo(object_name);
             }
@@ -323,7 +323,7 @@ int process_contact_config(const char *name, const char *value, char **params, i
             uint index = atoi(value);
             if(index >= 0 && index < sizeof(contact_config) / sizeof(char *)) {
                 dstate_setinfo(new_name, "%s", (char *)contact_config[index]);
-                upsdebugx(4, "Convert %s value %s -> %s", new_name, value, (char *)contact_config[index]);
+                upsdebugx(3, "Convert %s value %s -> %s", new_name, value, (char *)contact_config[index]);
                 free(new_name);
                 return 0;
             }
@@ -358,7 +358,7 @@ int process_contact_status(const char *name, const char *value, char **params, i
             uint index = atoi(value);
             if(index >= 0 && index < sizeof(contact_status) / sizeof(char *)) {
                 dstate_setinfo(new_name, "%s", (char *)contact_status[index]);
-                upsdebugx(4, "Convert %s value %s -> %s", new_name, value, (char *)contact_status[index]);
+                upsdebugx(3, "Convert %s value %s -> %s", new_name, value, (char *)contact_status[index]);
                 free(new_name);
                 return 0;
             }
@@ -386,7 +386,7 @@ int process_temperature_value(const char *name, const char *value, char **params
         if (asprintf(&new_name, name, index_device + 1) != -1) {
             double double_value = atof(value) - 273.15;
             dstate_setinfo(new_name, "%.2lf", double_value);
-            upsdebugx(4, "Convert %s value %s -> %.2lf", new_name, value, double_value);
+            upsdebugx(3, "Convert %s value %s -> %.2lf", new_name, value, double_value);
             free(new_name);
             return 0;
         }
@@ -411,7 +411,7 @@ int process_data_device(const char *name, const char *value, char **params, int 
         char *new_name = NULL;
         if (asprintf(&new_name, name, index_device + 1) != -1) {
             dstate_setinfo(new_name, "%s", value);
-            upsdebugx(4, "Convert %s value %s", new_name, value);
+            upsdebugx(3, "Convert %s value %s", new_name, value);
             free(new_name);
             return 0;
         }
@@ -442,7 +442,7 @@ int process_present_device(const char *name, const char *value, char **params, i
             /* 4: Not initiated / No contact */
             const char *new_value = (strcmp(value, "2") == 0) ? yes_no_value[0] : yes_no_value[1];
             dstate_setinfo(new_name, "%s", new_value);
-            upsdebugx(4, "Convert %s value %s", new_name, new_value);
+            upsdebugx(3, "Convert %s value %s", new_name, new_value);
             free(new_name);
             return 0;
         }
@@ -470,7 +470,7 @@ int process_data_sensor(const char *name, const char *value, char **params, int 
         if (index_device >= 0 && index_sensor >= 0) {
             if (asprintf(&new_name, name, index_device + 1, type_sensor_name[type_sensor], index_sensor + 1) != -1) {
                 dstate_setinfo(new_name, "%s", value);
-                upsdebugx(4, "Convert %s value %s", new_name, value);
+                upsdebugx(3, "Convert %s value %s", new_name, value);
                 free(new_name);
                 return 0;
             }
@@ -515,7 +515,7 @@ int process_enable_sensor(const char *name, const char *value, char **params, in
                     if (asprintf(&object_name, ambient_object_name[iObject],
                         index_device + 1, type_sensor_name[type_sensor], index_sensor + 1) != -1) {
                         dstate_delinfo(object_name);
-                        upsdebugx(4, "Remove %s", object_name);
+                        upsdebugx(3, "Remove %s", object_name);
                         free(object_name);
                     }
                 }
@@ -558,7 +558,7 @@ int process_enable_contacts(const char *name, const char *value, char **params, 
                 for (iObject = 0; iObject < sizeof(ambient_contacts_name) / sizeof(char *) ; iObject++) {
                     if (asprintf(&object_name, ambient_contacts_name[iObject], index_device + 1, index_sensor + 1) != -1) {
                         dstate_delinfo(object_name);
-                        upsdebugx(4, "Remove %s", object_name);
+                        upsdebugx(3, "Remove %s", object_name);
                         free(object_name);
                     }
                 }
@@ -647,12 +647,12 @@ int process_index_device(const char *name, const char *value, char **params, int
     /* test if some device need to be removed */
     int nb_init_device = map_get_nb_init_devices(list_device_root);
     int nb_device = map_get_nb_devices(list_device_root);
-    upsdebugx(4, "nb_device=%d nb_init_device=%d", nb_device, nb_init_device);
+    upsdebugx(3, "nb_device=%d nb_init_device=%d", nb_device, nb_init_device);
     if (res == 0 && nb_init_device >=0 && nb_device >= 0 && position_device == nb_init_device -1)
     {
         int iDevice;
         for (iDevice = position_device + 1; res >=0 && iDevice < nb_device; iDevice++) {
-            upsdebugx(4, "Remove iDevice=%d position_device=%d", iDevice, position_device);
+            upsdebugx(3, "Remove iDevice=%d position_device=%d", iDevice, position_device);
             if (map_remove_device(list_device_root, iDevice) != 0) {
                 res = -7;
             }
@@ -714,7 +714,7 @@ int process_index_sensor(const char *name, const char *value, char **params, int
                         if (asprintf(&object_name, "ambient.%d.%s.status", index_device + 1, type_sensor_name[type_sensor]) != -1) {
                             const char *value = get_extended_value(extended_status_info, 0, NULL);
                             dstate_setinfo(object_name, "%s", value);
-                            upsdebugx(4, "Set %s -> %s", object_name, value);
+                            upsdebugx(3, "Set %s -> %s", object_name, value);
                             free(object_name);
                         }
                     }
@@ -741,7 +741,7 @@ int process_supplier_id(const char *name, const char *value, char **params, int 
     if (pch) {
         if (master_supplier_id) free(master_supplier_id);
         if (asprintf(&master_supplier_id, "%s", pch + 1) != -1) {
-            upsdebugx(4, "Set master supplier id -> %s", master_supplier_id);
+            upsdebugx(3, "Set master supplier id -> %s", master_supplier_id);
             return 0;
         }
     }
@@ -763,7 +763,7 @@ int process_data_supplier(const char *name, const char *value, char **params, in
     /* update data only if it is the master supplier */
     if (master_supplier_id && strcmp(master_supplier_id, params[0]) == 0) {
         dstate_setinfo(name, "%s", value);
-        upsdebugx(4, "Set %s -> %s", name, value);
+        upsdebugx(3, "Set %s -> %s", name, value);
     }
     return 0;
 }
@@ -783,7 +783,7 @@ int alarm_object_default(alarm_t *alarm, const char *object_name, int alarm_stat
 
     const char *value = get_basic_value(basic_status_info, alarm->level);
     dstate_setinfo(object_name, "%s", value);
-    upsdebugx(4, "Alarm %s -> %s", object_name, value);
+    upsdebugx(3, "Alarm %s -> %s", object_name, value);
     return 0;
 }
 
@@ -800,7 +800,7 @@ int alarm_default(alarm_t *alarm, const char *alarm_value, int alarm_state, char
     if (!(alarm && alarm_value)) return -1;
 
     alarm_set(alarm_value);
-    upsdebugx(4, "Add alarm %s", alarm_value);
+    upsdebugx(3, "Add alarm %s", alarm_value);
     return 0;
 }
 
@@ -817,7 +817,7 @@ int alarm_status_default(alarm_t *alarm, const char *status_value, int alarm_sta
     if (!(alarm && status_value)) return -1;
 
     status_set(status_value);
-    upsdebugx(4, "Add status alarm %s", status_value);
+    upsdebugx(3, "Add status alarm %s", status_value);
     return 0;
 }
 
@@ -835,7 +835,7 @@ int alarm_status_main(alarm_t *alarm, const char *status_value, int alarm_state,
 
     if (main_status_value) free(main_status_value);
     main_status_value = strdup(status_value);
-    upsdebugx(4, "Add main status alarm %s", status_value);
+    upsdebugx(3, "Add main status alarm %s", status_value);
     return 0;
 }
 
@@ -859,7 +859,7 @@ int alarm_object_contact(alarm_t *alarm, const char *object_name, int alarm_stat
         if (asprintf(&new_object_name, object_name, index_device + 1, index_sensor + 1) != -1) {
             const char *value = get_basic_value(basic_status_info, (alarm_state == ALARM_NEW) ? alarm->level : 0);
             dstate_setinfo(new_object_name, "%s", value);
-            upsdebugx(4, "Alarm %s -> %s", new_object_name, value);
+            upsdebugx(3, "Alarm %s -> %s", new_object_name, value);
             free(new_object_name);
             return 0;
         }
@@ -891,7 +891,7 @@ int alarm_object_sensor(alarm_t *alarm, const char *object_name, int alarm_state
                 if (alarm_state == ALARM_NEW) value = get_extended_value(extended_status_info, alarm->level, alarm->code);
                 else value = get_extended_value(extended_status_info, 0, 0);
                 dstate_setinfo(new_object_name, "%s", value);
-                upsdebugx(4, "Alarm %s value %s", new_object_name, value);
+                upsdebugx(3, "Alarm %s value %s", new_object_name, value);
                 free(new_object_name);
                 return 0;
             }
@@ -924,7 +924,7 @@ int alarm_sensor(alarm_t *alarm, const char *object_name, int alarm_state, char 
             alarm_value = get_extended_value(extended_object_level, alarm->level, alarm->code);
             if (alarm_value) {
                 alarm_set(alarm_value);
-                upsdebugx(4, "Alarm value %s", alarm_value);
+                upsdebugx(3, "Alarm value %s", alarm_value);
             }
             return 0;
         }
@@ -951,7 +951,7 @@ int alarm_contact(alarm_t *alarm, const char *object_name, int alarm_state, char
         const char *alarm_value = get_basic_value(contacts_alarms_info, alarm->level);
         if (alarm_value) {
             alarm_set(alarm_value);
-            upsdebugx(4, "Alarm value %s", alarm_value);
+            upsdebugx(3, "Alarm value %s", alarm_value);
         }
         return 0;
     }
@@ -980,7 +980,7 @@ const alarm_nut_t s_alarm_mapping[] =  {
     { "110,11F", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Building alarm!", NULL, NULL, &alarm_default, NULL },
     { "201", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Bypass not available!", NULL, NULL, &alarm_default, NULL },
     { "205", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "On bypass!", "BYPASS", NULL, &alarm_default, &alarm_status_main },
-    /* TBD */{ "400,704", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Powerswitch failure!", NULL, NULL, &alarm_default, NULL },
+    /* TBD */{ "400", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Powerswitch failure!", NULL, NULL, &alarm_default, NULL },
     { "500", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Charger failure!", NULL, NULL, &alarm_default, NULL },
     /* TBD */{ "601", "^mbdetnrs/1.0/powerDistributions/1$", NULL, NULL, "CHRG", NULL, NULL, &alarm_status_default },
     { "603", "^mbdetnrs/1.0/powerDistributions/1$", NULL, NULL, "DISCHRG", NULL, NULL, &alarm_status_default },
@@ -995,17 +995,12 @@ const alarm_nut_t s_alarm_mapping[] =  {
     /* TBD */{ "817,818,819,81A", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Bad output condition!", NULL, NULL, &alarm_default, NULL },
     /* TBD */{ "81B", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Output off as requested!", "OFF", NULL, &alarm_default, &alarm_status_main },
     { "900", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "On maintenance bypass!", "BYPASS", NULL, &alarm_default, &alarm_status_main },
-    { "801", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Output off!", "OFF", NULL, &alarm_default, &alarm_status_main },
-    /* TBD */{ "1017,1032,1100", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Shutdown pending!", NULL, NULL, &alarm_default, NULL },
+    /* NOTE: 81D(UPS.PowerSummary.PresentStatus.Good=0) don't work. Use 81D(UPS.PowerSummary.Status=0) instead of*/
+    { "801,81D", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Output off!", "OFF", NULL, &alarm_default, &alarm_status_main },
     /* FOR TEST *///{ "A0F",  "^mbdetnrs/1.0/powerDistributions/1/outlets/([^/]+)$", "outlet.%d.status", NULL, NULL, &alarm_object_outlet, &alarm_outlet, NULL },
-    { "1200", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1201", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1203", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1204", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1211", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1212", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1213", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
-    { "1214", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
+    /* TBD */{ "1017,1032,1100", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Shutdown pending!", NULL, NULL, &alarm_default, NULL },
+    { "1201,1202,1203,1204", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
+    { "1211,1212,1213,1214", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
     /* TBD */{ "1221", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/digitalInputs/([^/]+)$", "ambient.%d.contacts.%d.alarm", NULL, NULL, &alarm_object_contact, &alarm_contact, NULL/*&alarm_contact, alarm_status_contact*/ },
 
     { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL }
@@ -1026,7 +1021,7 @@ int manage_alarm(alarm_t *alarm, int alarm_state) {
     const alarm_nut_t *it = s_alarm_mapping;
     while (it->code) {
         if (map_alarm_code_find(it->code, alarm->code)) {
-            upsdebugx(4, "manage_alarm: %s found in %s", alarm->code, it->code);
+            upsdebugx(3, "manage_alarm: %s found in %s", alarm->code, it->code);
             char **params = NULL;
             uint nb_params = 0;
             if (it->topic) {
@@ -1041,7 +1036,7 @@ int manage_alarm(alarm_t *alarm, int alarm_state) {
                             uint i;
                             for (i = 0; i < nb_params; i++) {
                                 params[i] = strndup(alarm->topic + match[i + 1].rm_so, match[i + 1].rm_eo - match[i + 1].rm_so);
-                                upsdebugx(4, "manage_alarm %u: param=%s", i, params[i]);
+                                upsdebugx(3, "manage_alarm %u: param=%s", i, params[i]);
                             }
                         }
                     }
@@ -1123,14 +1118,14 @@ int process_alarms() {
     /* test first if new alarms appear */
     if (current_alarm_array && nb_current_alarm_array > 0) {
         for (iAlarm = 0; iAlarm < nb_current_alarm_array; iAlarm++) {
-            upsdebugx(4, "process_alarm: id=%s", current_alarm_array[iAlarm].id);
+            upsdebugx(3, "process_alarm: id=%s", current_alarm_array[iAlarm].id);
             if (!map_find_alarm(list_alarm_root, current_alarm_array[iAlarm].id)) {
                 if (map_add_alarm(list_alarm_root, &current_alarm_array[iAlarm]) != 0) {
-                    upsdebugx(2, "Error during adding alarm %s", current_alarm_array[iAlarm].id);
+                    upsdebugx(3, "Error during adding alarm %s", current_alarm_array[iAlarm].id);
                     res = -1;
                 }
                 alarm_state = ALARM_NEW;
-                upsdebugx(4, "process_alarm: id=%s added", current_alarm_array[iAlarm].id);
+                upsdebugx(2, "process_alarm: id=%s added", current_alarm_array[iAlarm].id);
             }
             else {
                 alarm_state = ALARM_ACTIVE;
@@ -1145,7 +1140,7 @@ int process_alarms() {
     /* then test if old alarms disappear */
     alarm_elm_t *current_alarm = list_alarm_root->list_alarm;
     while (current_alarm) {
-        upsdebugx(4, "process_alarm: test id=%s", current_alarm->alarm.id);
+        upsdebugx(3, "process_alarm: test id=%s", current_alarm->alarm.id);
         int isFound = 0;
         for(iAlarm = 0; current_alarm_array && iAlarm < nb_current_alarm_array; iAlarm++) {
             if (strcmp(current_alarm->alarm.id, current_alarm_array[iAlarm].id) == 0) {
@@ -1155,7 +1150,7 @@ int process_alarms() {
         }
         if (!isFound) {
             /* treatment deactivate nut alarm */
-            upsdebugx(4, "process_alarm: deactivated id=%s", current_alarm->alarm.id);
+            upsdebugx(3, "process_alarm: deactivated id=%s", current_alarm->alarm.id);
             alarm_state = ALARM_INACTIVE;
             manage_alarm(&current_alarm->alarm, alarm_state);
             map_remove_alarm(list_alarm_root, current_alarm->alarm.id);
@@ -1446,7 +1441,7 @@ static void s_mqtt_nm2_walk(const char *path, struct json_object *obj)
 	char newPath[256] = { '\0' };
 	struct json_object_iterator it, itEnd;
 	int index;
-    upsdebugx(2, "s_mqtt_nm2_walk: %s", path);
+    upsdebugx(4, "s_mqtt_nm2_walk: %s", path);
 	switch (json_object_get_type(obj)) {
 		case json_type_object:
 			itEnd = json_object_iter_end(obj);
