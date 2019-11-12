@@ -28,6 +28,7 @@
 #include "nutdrv_mqtt.h"
 #include "nutdrv_mqtt_map_sensor.h"
 #include "nutdrv_mqtt_map_alarm.h"
+#include "nutdrv_mqtt_map_outlet.h"
 #include <openssl/ssl.h>
 #include <mosquitto.h>
 #include <json-c/json.h>
@@ -85,8 +86,8 @@ device_map_t *list_device_root = NULL;
 alarm_map_t *list_alarm_root = NULL;
 alarm_t *current_alarm_array = NULL;
 int nb_current_alarm_array = -1;
+outlet_map_t *outlet_map_root = NULL;
 char *main_status_value = NULL;
-char *master_supplier_id = NULL;
 
 const char *type_sensor_name[] = {
     "temperature",
@@ -94,9 +95,14 @@ const char *type_sensor_name[] = {
     "contacts"
 };
 
-const char *yes_no_value[] = {
-    "yes",
-    "no"
+const char *no_yes_value[] = {
+    "no",
+    "yes"
+};
+
+const char *off_on_value[] = {
+    "off",
+    "on"
 };
 
 const char *ambient_object_name[] =  {
@@ -440,7 +446,7 @@ int process_present_device(const char *name, const char *value, char **params, i
             /* 2: Communication OK */
             /* 3: Communication lost */
             /* 4: Not initiated / No contact */
-            const char *new_value = (strcmp(value, "2") == 0) ? yes_no_value[0] : yes_no_value[1];
+            const char *new_value = (strcmp(value, "2") == 0) ? no_yes_value[1] : no_yes_value[0];
             dstate_setinfo(new_name, "%s", new_value);
             upsdebugx(3, "Convert %s value %s", new_name, new_value);
             free(new_name);
@@ -727,6 +733,24 @@ int process_index_sensor(const char *name, const char *value, char **params, int
 }
 
 /**
+ * @function process_supplier_count (Callback) Process supplier count
+ * @param name Object name
+ * @param value Object value
+ * @param params Parameters array built from regex expression
+ * @param nb_params Number of element in the parameters array
+ * @return {integer} 0 if success else < 0
+ */
+int process_supplier_count(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+
+    int nb_outlet = atoi(value);
+    if (map_init_outlet(outlet_map_root, nb_outlet) == 0) {
+        return 0;
+    }
+    return -2;
+}
+
+/**
  * @function process_supplier_id (Callback) Process master supplier id
  * @param name Object name
  * @param value Object value
@@ -736,16 +760,49 @@ int process_index_sensor(const char *name, const char *value, char **params, int
  */
 int process_supplier_id(const char *name, const char *value, char **params, int nb_params) {
     if (!value) return -1;
+    if (!params || nb_params != 1) return -2;
 
     char *pch = strrchr(value, '/');
     if (pch) {
-        if (master_supplier_id) free(master_supplier_id);
-        if (asprintf(&master_supplier_id, "%s", pch + 1) != -1) {
-            upsdebugx(3, "Set master supplier id -> %s", master_supplier_id);
-            return 0;
+        int index_outlet = atoi(params[0]);
+        if (outlet_map_root && index_outlet < outlet_map_root->nb_outlet) {
+            if (outlet_map_root->array_outlet[index_outlet].topic) {
+                free(outlet_map_root->array_outlet[index_outlet].topic);
+            }
+            if (asprintf(&(outlet_map_root->array_outlet[index_outlet].topic), "%s", pch + 1) != -1) {
+                outlet_map_root->array_outlet[index_outlet].id = index_outlet;
+                upsdebugx(3, "Set supplier id=%d -> %s", index_outlet, outlet_map_root->array_outlet[index_outlet].topic);
+                return 0;
+            }
         }
     }
-    return -2;
+    return -3;
+}
+
+/**
+ * @function process_switchable_supplier (Callback) Process switchable info for supplier
+ * @param name Object name
+ * @param value Object value
+ * @param params Parameters array built from regex expression
+ * @param nb_params Number of element in the parameters array
+ * @return {integer} 0 if success else < 0
+ */
+int process_switchable_supplier(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 1) return -2;
+
+    outlet_t *outlet = map_find_outlet(outlet_map_root, params[0]);
+    /* update data only if it is not the master supplier */
+    if (outlet && outlet->id > 0) {
+        char *object_name = NULL;
+        if (asprintf(&object_name, name, outlet->id) != -1) {
+            const char *object_value = (strcmp(value, "1") == 0) ? no_yes_value[1] : no_yes_value[0];
+            upsdebugx(3, "Set %s -> %s", object_name, object_value);
+            dstate_setinfo(object_name, "%s", object_value);
+            free(object_name);
+        }
+    }
+    return 0;
 }
 
 /**
@@ -756,18 +813,43 @@ int process_supplier_id(const char *name, const char *value, char **params, int 
  * @param nb_params Number of element in the parameters array
  * @return {integer} 0 if success else < 0
  */
-int process_data_supplier(const char *name, const char *value, char **params, int nb_params) {
+int process_data_master_supplier(const char *name, const char *value, char **params, int nb_params) {
     if (!value) return -1;
     if (!params || nb_params != 1) return -2;
 
-    /* update data only if it is the master supplier */
-    if (master_supplier_id && strcmp(master_supplier_id, params[0]) == 0) {
-        dstate_setinfo(name, "%s", value);
+    outlet_t *outlet = map_find_outlet(outlet_map_root, params[0]);
+    /* update data only if it is not the master supplier */
+    if (outlet && outlet->id == 0) {
         upsdebugx(3, "Set %s -> %s", name, value);
+        dstate_setinfo(name, "%s", value);
     }
     return 0;
 }
 
+/**
+ * @function process_data_supplier (Callback) Process data from switchable supplier
+ * @param name Object name
+ * @param value Object value
+ * @param params Parameters array built from regex expression
+ * @param nb_params Number of element in the parameters array
+ * @return {integer} 0 if success else < 0
+ */
+int process_data_supplier(const char *name, const char *value, char **params, int nb_params) {
+    if (!value) return -1;
+    if (!params || nb_params != 1) return -2;
+
+    outlet_t *outlet = map_find_outlet(outlet_map_root, params[0]);
+    /* update data only if it is not the master supplier */
+    if (outlet && outlet->id > 0) {
+        char *object_name = NULL;
+        if (asprintf(&object_name, name, outlet->id) != -1) {
+            upsdebugx(3, "Set %s -> %s", object_name, value);
+            dstate_setinfo(object_name, "%s", value);
+            free(object_name);
+        }
+    }
+    return 0;
+}
 
 /**
  * @function alarm_object_default (Callback) Default treatment for alarm object
@@ -959,6 +1041,35 @@ int alarm_contact(alarm_t *alarm, const char *object_name, int alarm_state, char
 }
 
 /**
+ * @function alarm_object_outlet (Callback) Treatment for outlet status
+ * @param alarm Alarm object
+ * @param object_name Object name value
+ * @param alarm_state Alarm state
+ * @param params Parameters array built from regex expression
+ * @param nb_params Number of element in the parameters array
+ * @return {integer} 0 if success else < 0
+ */
+int alarm_object_outlet(alarm_t *alarm, const char *object_name, int alarm_state, char **params, int nb_params) {
+    if (!(alarm && object_name)) return -1;
+    if (!params || nb_params != 1) return -2;
+
+    /* TBD: outlet mapping missing in power service to update status */
+    /* -> alarm  mapping is mbdetnrs/1.0/powerDistributions/1/outlets/+ */
+    outlet_t *outlet = map_find_outlet(outlet_map_root, params[0]);
+    /* update data only if it is not the master supplier */
+    if (outlet && outlet->id > 0) {
+        char *new_object_name = NULL;
+        if (asprintf(&new_object_name, object_name, outlet->id) != -1) {
+            const char *object_value = (alarm_state == ALARM_INACTIVE) ? off_on_value[1] : off_on_value[0];
+            upsdebugx(3, "Set %s -> %s", new_object_name, object_value);
+            dstate_setinfo(new_object_name, "%s", object_value);
+            free(new_object_name);
+        }
+    }
+    return 0;
+}
+
+/**
  * nm2 alarms mapping
  */
 const alarm_nut_t s_alarm_mapping[] =  {
@@ -997,7 +1108,7 @@ const alarm_nut_t s_alarm_mapping[] =  {
     { "900", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "On maintenance bypass!", "BYPASS", NULL, &alarm_default, &alarm_status_main },
     /* NOTE: 81D(UPS.PowerSummary.PresentStatus.Good=0) don't work. Use 81D(UPS.PowerSummary.Status=0) instead of*/
     { "801,81D", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Output off!", "OFF", NULL, &alarm_default, &alarm_status_main },
-    /* FOR TEST *///{ "A0F",  "^mbdetnrs/1.0/powerDistributions/1/outlets/([^/]+)$", "outlet.%d.status", NULL, NULL, &alarm_object_outlet, &alarm_outlet, NULL },
+    { "A0F",  "^mbdetnrs/1.0/powerDistributions/1/outlets/([^/]+)$", "outlet.%d.status", "outlet.%d.status", NULL, &alarm_object_outlet, NULL, NULL },
     /* TBD */{ "1017,1032,1100", "^mbdetnrs/1.0/powerDistributions/1$", NULL, "Shutdown pending!", NULL, NULL, &alarm_default, NULL },
     { "1201,1202,1203,1204", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(temperatures)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
     { "1211,1212,1213,1214", "^mbdetnrs/1.0/sensors/devices/([^/]+)/channels/(humidities)/([^/]+)$", "ambient.%d.%s.status", NULL, NULL, &alarm_object_sensor, &alarm_sensor, NULL },
@@ -1114,6 +1225,29 @@ int process_alarms() {
     status_init();
     /* status is On Line (OL) by default */
     main_status_value = strdup("OL");
+    /* update status for outlets if not initialized */
+    /* TBD: outlet mapping missing in power service to update status */
+    if (outlet_map_root && outlet_map_root->nb_outlet > 0) {
+        int iOutlet = 0;
+        //printf("outlet_map_root->nb_outlet=%d\n", outlet_map_root->nb_outlet);
+        /* only for switchable outlets */
+        for (iOutlet = 1; iOutlet < outlet_map_root->nb_outlet; iOutlet++) {
+            char *object_name = NULL;
+            //printf("iOutlet=%d\n", iOutlet);
+            if (asprintf(&object_name, "outlet.%d.status", outlet_map_root->array_outlet[iOutlet].id) != -1) {
+                printf("object_name=%s\n", object_name);
+                const char *value = dstate_getinfo(object_name);
+                printf(" object_name=%s value=%s", object_name, value ? value : "NULL");
+                if (value == NULL || strcmp(value, "") == 0) {
+                    /* outlet status is ON by default*/
+                    const char *object_value = off_on_value[1];
+                    upsdebugx(3, "Set %s -> %s", object_name, object_value);
+                    dstate_setinfo(object_name, "%s", object_value);
+                    free(object_name);
+                }
+            }
+        }
+    }
 
     /* test first if new alarms appear */
     if (current_alarm_array && nb_current_alarm_array > 0) {
@@ -1272,10 +1406,13 @@ static const nm2_pairs s_nm2_mapping[] =  {
 	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingChargeCapacity$", "battery.charge", NULL },
 	{ "^mbdetnrs/1.0/powerDistributions/1/inputs/1/batteries/measures/remainingTime$", "battery.runtime", NULL },*/
 
-    { "^mbdetnrs/1.0/powerService/suppliers/members/0/@id$", NULL, &process_supplier_id },
-    { "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/summary/loadPercent", "ups.load", &process_data_supplier },
-    /*TBD*/{ "^mbdetnrs/1.0/powerService/suppliers/members/([^/]+)/configuration/nominalPower", "ups.power.nominal", &process_data_supplier },
-    /*TBD{ "^mbdetnrs/1.0/powerService/suppliers/members/([^/]+)/configuration/nominalPower", "ups.realpower.nominal", &process_data_supplier },*/
+    { "^mbdetnrs/1.0/powerService/suppliers/members@count$", "outlet.count", &process_supplier_count },
+    { "^mbdetnrs/1.0/powerService/suppliers/members/([0-9]+)/@id$", NULL, &process_supplier_id },
+    { "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/configuration/isSwitchable", "outlet.%d.switchable", &process_switchable_supplier },
+    //{ "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/identification/physicalName", "outlet.%d.name", &process_data_supplier },
+    { "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/identification/name", "outlet.%d.name", &process_data_supplier },
+    /*TBD*/{ "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/configuration/nominalPower", "ups.power.nominal", &process_data_master_supplier },
+    /*TBD{ "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/configuration/nominalPower", "ups.realpower.nominal", &process_data_master_supplier },*/
     { "^mbdetnrs/1.0/powerService/suppliers/members/([^/]+)/measures/apparentPower", "ups.power", &process_data_supplier },
     /*TBD*/{ "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/measures/activePower", "ups.realpower", &process_data_supplier },
     /*TBD*/{ "^mbdetnrs/1.0/powerService/suppliers/([^/]+)/measures/activePower", "output.realpower", &process_data_supplier },
@@ -1653,11 +1790,15 @@ void upsdrv_initups(void)
 
     list_device_root = (device_map_t *) malloc(sizeof(device_map_t));
     memset(list_device_root, 0, sizeof(device_map_t));
-    list_device_root->list_device = NULL; // TBD ???
+    list_device_root->list_device = NULL;
 
     list_alarm_root = (alarm_map_t *) malloc(sizeof(alarm_map_t));
     memset(list_alarm_root, 0, sizeof(alarm_map_t));
-    list_alarm_root->list_alarm = NULL; // TBD ???
+    list_alarm_root->list_alarm = NULL;
+
+    outlet_map_root = (outlet_map_t *) malloc(sizeof(outlet_map_t));
+    memset(outlet_map_root, 0, sizeof(outlet_map_t));
+    outlet_map_root->array_outlet = NULL;
 
 	if (testvar(SU_VAR_TLS_INSECURE))
 		var_insecure = true;
@@ -1761,8 +1902,9 @@ void upsdrv_cleanup(void)
     map_remove_all_alarms(list_alarm_root);
     if (list_alarm_root) free(list_alarm_root);
 
-    /* clear master supplier id */
-    if (master_supplier_id) free(master_supplier_id);
+    /* clear outlet list */
+    map_destroy_outlet(outlet_map_root);
+    if (outlet_map_root) free(outlet_map_root);
 
 	/* Cleanup Mosquitto */
 	mosquitto_destroy(mosq);
