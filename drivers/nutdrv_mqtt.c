@@ -29,6 +29,7 @@
 #include "nutdrv_mqtt_map_sensor.h"
 #include "nutdrv_mqtt_map_alarm.h"
 #include "nutdrv_mqtt_map_outlet.h"
+#include "nutdrv_mqtt_http.h"
 #include <openssl/ssl.h>
 #include <mosquitto.h>
 #include <json-c/json.h>
@@ -88,6 +89,45 @@ alarm_t *current_alarm_array = NULL;
 int nb_current_alarm_array = -1;
 outlet_map_t *outlet_map_root = NULL;
 char *main_status_value = NULL;
+
+const char *list_topics[] = {
+    "mbdetnrs/1.0/managers/1/identification",
+    "mbdetnrs/1.0/powerDistributions/1/identification",
+    //"mbdetnrs/1.0/powerDistributions/1/inputs/+/measures",
+    //"mbdetnrs/1.0/powerDistributions/1/outputs/+/measures",
+    "mbdetnrs/1.0/sensors",
+    "mbdetnrs/1.0/sensors/devices",
+    "mbdetnrs/1.0/sensors/devices/+",
+    "mbdetnrs/1.0/sensors/devices/+/identification",
+    "mbdetnrs/1.0/sensors/devices/+/communication",
+    "mbdetnrs/1.0/sensors/devices/+/channels/temperatures",
+    //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+",
+    "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/identification",
+    "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/configuration",
+    //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/alarms",
+    //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/alarms/thresholds",
+    "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/measure",
+    "mbdetnrs/1.0/sensors/devices/+/channels/humidities",
+    //"mbdetnrs/1.0/sensors/devices/+/channels/humidities/+",
+    "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/identification",
+    "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/configuration",
+    "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/measure",
+    //"mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/alarms",
+    "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs",
+    "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/identification",
+    "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/configuration",
+    "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/measure",
+
+    "mbdetnrs/1.0/powerService/suppliers",
+    "mbdetnrs/1.0/powerService/suppliers/+/identification",
+    "mbdetnrs/1.0/powerService/suppliers/+/configuration",
+    "mbdetnrs/1.0/powerService/suppliers/+/summary",
+    "mbdetnrs/1.0/powerService/suppliers/+/measures",
+
+    "mbdetnrs/1.0/alarmService/activeAlarms",
+
+    NULL
+};
 
 const char *type_sensor_name[] = {
     "temperature",
@@ -1577,7 +1617,7 @@ static void s_mqtt_nm2_walk(const char *path, struct json_object *obj)
 {
 	char newPath[256] = { '\0' };
 	struct json_object_iterator it, itEnd;
-	int index;
+	uint index;
     upsdebugx(4, "s_mqtt_nm2_walk: %s", path);
 	switch (json_object_get_type(obj)) {
 		case json_type_object:
@@ -1611,6 +1651,8 @@ static void s_mqtt_nm2_message_callback(const char *topic, void *message, size_t
     regmatch_t match[MAX_SUB_EXPR];
 
     const char *topics_list[] = {
+        "^connection/error$",
+
         "^mbdetnrs/1.0/managers/1/identification$",
         "^mbdetnrs/1.0/powerDistributions/1/identification$",
         // TBD
@@ -1763,7 +1805,14 @@ void upsdrv_makevartable(void)
 		"Username for authentification");
 	addvar(VAR_VALUE | VAR_SENSITIVE, SU_VAR_PASSWORD,
 		"Password for authentification");
-
+#if 0
+    addvar(VAR_FLAG, SU_VAR_APP_UUID, "Application uuid");
+    addvar(VAR_FLAG, SU_VAR_APP_SHORT_NAME, "Application short name");
+    addvar(VAR_FLAG, SU_VAR_APP_LONG_NAME, "Application long name");
+    addvar(VAR_FLAG, SU_VAR_APP_VENDOR, "Application vendor name");
+    addvar(VAR_FLAG, SU_VAR_APP_VENDOR, "Application version");
+    addvar(VAR_FLAG, SU_VAR_APP_LOCATION, "Application location");
+#endif
 	addvar(VAR_FLAG, SU_VAR_TLS_INSECURE,
 		"When set, do not check server certificate (TLS mode)");
 	addvar(VAR_VALUE, SU_VAR_TLS_CA_FILE,
@@ -1787,6 +1836,17 @@ void upsdrv_initups(void)
 	bool var_clean_session = true;
 	int var_port = 1883;
 	int var_keepalive = 60;
+
+    printf("client_id=%s username=%s password=%s tls_insecure=%s "
+           "tls_ca_file=%s tls_ca_path=%s tls_crt_file=%s tls_key_file=%s\n",
+           getval(SU_VAR_CLIENT_ID),
+           getval(SU_VAR_USERNAME),
+           getval(SU_VAR_PASSWORD),
+           getval(SU_VAR_TLS_INSECURE),
+           getval(SU_VAR_TLS_CA_FILE),
+           getval(SU_VAR_TLS_CA_PATH),
+           getval(SU_VAR_TLS_CRT_FILE),
+           getval(SU_VAR_TLS_KEY_FILE));
 
     list_device_root = (device_map_t *) malloc(sizeof(device_map_t));
     memset(list_device_root, 0, sizeof(device_map_t));
@@ -1813,37 +1873,26 @@ void upsdrv_initups(void)
 		var_port = 8883;
 	}
 
+    /* cURL init */
+    curl_global_init(CURL_GLOBAL_ALL);
+
 	/* Initialize Mosquitto */
 	mosquitto_lib_init();
 
-	{
-		/* Generate default client id */
-		char default_client_id[128] = { '\0' };
-		char hostname[HOST_NAME_MAX] = { '\0' };
-		gethostname(hostname, sizeof(hostname));
-		snprintf(default_client_id, sizeof(default_client_id), "nutdrv_mqtt/%s-%d", hostname, getpid());
+	/* Generate default client id */
+    char default_client_id[128] = { '\0' };
+    char hostname[HOST_NAME_MAX] = { '\0' };
+    gethostname(hostname, sizeof(hostname));
+    snprintf(default_client_id, sizeof(default_client_id), "nutdrv_mqtt/%s-%d", hostname, getpid());
+    upsdebugx(3, "default_client_id=%s", default_client_id);
 
-        //printf("hostname=%s device_path=%s\n", hostname, device_path);
-
-		/* Create client instance */
-		const char *client_id = testvar(SU_VAR_CLIENT_ID) ? getval(SU_VAR_CLIENT_ID) : default_client_id;
-		mosq = mosquitto_new(client_id, var_clean_session, NULL);
-	}
-
-	if(!mosq) {
+    /* Create client instance */
+    const char *client_id = testvar(SU_VAR_CLIENT_ID) ? getval(SU_VAR_CLIENT_ID) : default_client_id;
+    mosq = mosquitto_new(client_id, var_clean_session, NULL);
+	if (!mosq) {
 		mosquitto_lib_cleanup();
 		fatalx(EXIT_FAILURE, "Error while creating client instance: %s", strerror(errno));
 	}
-
-    printf("client_id=%s username=%s password=%s tls_insecure=%s tls_ca_file=%s tls_ca_path=%s tls_crt_file=%s tls_key_file=%s\n",
-            getval(SU_VAR_CLIENT_ID),
-            getval(SU_VAR_USERNAME),
-            getval(SU_VAR_PASSWORD),
-            getval(SU_VAR_TLS_INSECURE),
-            getval(SU_VAR_TLS_CA_FILE),
-            getval(SU_VAR_TLS_CA_PATH),
-            getval(SU_VAR_TLS_CRT_FILE),
-            getval(SU_VAR_TLS_KEY_FILE));
 
 	/* Set configuration points */
 	mosquitto_username_pw_set(mosq, getval(SU_VAR_USERNAME), getval(SU_VAR_PASSWORD));
@@ -1866,6 +1915,9 @@ void upsdrv_initups(void)
 	mosquitto_message_callback_set(mosq, mqtt_message_callback);
 	mosquitto_subscribe_callback_set(mosq, mqtt_subscribe_callback);
 
+    /* TBD ???
+    mosquitto_will_set(); */
+
 	/* Connect to the broker */
 	int rc = mosquitto_connect(mosq, device_path, var_port, var_keepalive);
 	if(rc) {
@@ -1882,8 +1934,52 @@ void upsdrv_initups(void)
 		} else {
 			fatalx(EXIT_FAILURE, "Error while connecting to MQTT broker: %s", mosquitto_strerror(rc));
 		}
-	}
 
+#if 0
+        /* TBD: Not managed by the card in monitored mode (only protection mode) */
+        /* Send the Agent identification to the remote card */
+        const char *ident = "{\n"
+            "   type: \"%s\",\n"
+            "   uuid: \"%s\",\n"
+            "   name: \"%s / %s\",\n"
+            "   vendor: \"%s\",\n"
+            "   product: \"%s\",\n"
+            "   link: \"https://%s\",\n"
+            "   version: \"%s\",\n"
+            "   operatingSystem: \"%s\"\n,"
+            "   location: \"%s\"\n"
+        "}";
+        char *identification = NULL;
+        if (asprintf(&identification, ident,
+            /* TBD: monitoringTopic ??? */
+            (0) ? "Monitoring Agent" : "Protection Agent",
+            testvar(SU_VAR_APP_UUID) ? getval(SU_VAR_APP_UUID) : "",
+            testvar(SU_VAR_APP_SHORT_NAME) ? getval(SU_VAR_APP_SHORT_NAME) : "", hostname,
+            testvar(SU_VAR_APP_VENDOR) ? getval(SU_VAR_APP_VENDOR) : "",
+            testvar(SU_VAR_APP_LONG_NAME) ? getval(SU_VAR_APP_LONG_NAME) : "",
+            hostname,
+            testvar(SU_VAR_APP_VERSION) ? getval(SU_VAR_APP_VERSION) : "",
+            testvar(SU_VAR_APP_OS) ? getval(SU_VAR_APP_OS) : "",
+            testvar(SU_VAR_APP_LOCATION) ? getval(SU_VAR_APP_LOCATION) : "") != -1) {
+
+            const char *protectionTopic = "mbdetnrs/1.0/protectionService/clients/%s/identification";
+            /* TBD: monitoringTopic ??? */
+            const char *monitoringTopic = "";
+            char *clientIdentificationTopic = NULL;
+            if (asprintf(&clientIdentificationTopic, (0) ? monitoringTopic : protectionTopic, client_id) != -1) {
+                upsdebugx(1, "Register to Monitoring Agent service with clientID: '%s' for Agent: '%s'", client_id, identification);
+                int qos = 1;
+                bool retain = true;
+                rc = mosquitto_publish(mosq, NULL, clientIdentificationTopic, strlen(identification), identification, qos, retain);
+                if (rc != MOSQ_ERR_SUCCESS) {
+                    upsdebugx(1, "Error while sending identification to MQTT broker: %s", mosquitto_strerror(rc));
+                }
+                free(clientIdentificationTopic);
+            }
+            free(identification);
+        }
+#endif
+	}
 	upsdebugx(1, "Connected to MQTT broker %s", device_path);
 }
 
@@ -1893,6 +1989,18 @@ void upsdrv_initups(void)
 void upsdrv_cleanup(void)
 {
 	upsdebugx(1, "entering %s()", __func__);
+
+    /* Disconnected from MQTT broker */
+    const char **topic;
+    for (topic = list_topics; *topic; topic++) {
+        int rc = mosquitto_unsubscribe(mosq, NULL, *topic);
+        if (rc != MOSQ_ERR_SUCCESS) {
+            upsdebugx(1, "Error while unsubscribing to topic %s: %s", *topic, mosquitto_strerror(rc));
+        }
+        else {
+            upsdebugx(3, "Sent unsubscribe request on topic %s", *topic);
+        }
+    }
 
     /* clear sensor device list */
     map_remove_all_devices(list_device_root);
@@ -1909,6 +2017,9 @@ void upsdrv_cleanup(void)
 	/* Cleanup Mosquitto */
 	mosquitto_destroy(mosq);
 	mosquitto_lib_cleanup();
+
+    /* cURL cleanup */
+    curl_global_cleanup();
 }
 
 /*-------------------------------------------------------------*/
@@ -1930,54 +2041,16 @@ void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result)
 		upsdebugx(2, "Connected to MQTT broker");
 
 		int var_qos = 0;
-		const char *topics[] = {
-			"mbdetnrs/1.0/managers/1/identification",
-			"mbdetnrs/1.0/powerDistributions/1/identification",
-			"mbdetnrs/1.0/powerDistributions/1/inputs/+/measures",
-			"mbdetnrs/1.0/powerDistributions/1/outputs/+/measures",
-            "mbdetnrs/1.0/sensors",
-            "mbdetnrs/1.0/sensors/devices",
 
-            "mbdetnrs/1.0/sensors/devices/+",
-            "mbdetnrs/1.0/sensors/devices/+/identification",
-            "mbdetnrs/1.0/sensors/devices/+/communication",
-            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures",
-            //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+",
-            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/identification",
-            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/configuration",
-            //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/alarms",
-            //"mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/alarms/thresholds",
-            "mbdetnrs/1.0/sensors/devices/+/channels/temperatures/+/measure",
-            "mbdetnrs/1.0/sensors/devices/+/channels/humidities",
-            //"mbdetnrs/1.0/sensors/devices/+/channels/humidities/+",
-            "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/identification",
-            "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/configuration",
-            "mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/measure",
-            //"mbdetnrs/1.0/sensors/devices/+/channels/humidities/+/alarms",
-            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs",
-            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/identification",
-            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/configuration",
-            "mbdetnrs/1.0/sensors/devices/+/channels/digitalInputs/+/measure",
-
-            "mbdetnrs/1.0/powerService/suppliers",
-            "mbdetnrs/1.0/powerService/suppliers/+/identification",
-            "mbdetnrs/1.0/powerService/suppliers/+/configuration",
-            "mbdetnrs/1.0/powerService/suppliers/+/summary",
-            "mbdetnrs/1.0/powerService/suppliers/+/measures",
-
-            "mbdetnrs/1.0/alarmService/activeAlarms",
-
-			NULL
-		} ;
 		const char **topic;
 
-		for (topic = topics; *topic; topic++) {
+		for (topic = list_topics; *topic; topic++) {
 			int rc = mosquitto_subscribe(mosq, NULL, *topic, var_qos);
 			if (rc) {
 				upsdebugx(1, "Error while subscribing to topic %s: %s", *topic, mosquitto_strerror(rc));
 			}
 			else {
-				upsdebugx(2, "Sent subscribe request on topic %s", *topic);
+				upsdebugx(3, "Sent subscribe request on topic %s", *topic);
 			}
 		}
 
@@ -1992,7 +2065,7 @@ void mqtt_connect_callback(struct mosquitto *mosq, void *obj, int result)
  */
 void mqtt_disconnect_callback(struct mosquitto *mosq, void *obj, int result)
 {
-	upsdebugx(1, "Disconnected from MQTT broker, code=%d", result);
+    upsdebugx(1, "Disconnected from MQTT broker, code=%d", result);
 	dstate_datastale();
 }
 

@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef MAP_SENSOR_H
-#define MAP_SENSOR_H
+#ifndef MQTT_MAP_SENSOR_H
+#define MQTT_MAP_SENSOR_H
 
 #define NB_TYPE_SENSOR 3
 
@@ -93,4 +93,4 @@ int map_get_sensor_state(device_map_t *root, int index_device, int type_sensor, 
 }
 #endif
 
-#endif /* MAP_SENSOR_H */
+#endif /* MQTT_MAP_SENSOR_H */

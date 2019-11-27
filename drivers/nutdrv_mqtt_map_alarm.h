@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef MAP_ALARM_H
-#define MAP_ALARM_H
+#ifndef MQTT_MAP_ALARM_H
+#define MQTT_MAP_ALARM_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -65,4 +65,4 @@ void map_remove_all_alarms(alarm_map_t *root);
 }
 #endif
 
-#endif /* MAP_ALARM_H */
+#endif /* MQTT_MAP_ALARM_H */

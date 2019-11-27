@@ -33,4 +33,14 @@
 #define SU_VAR_TLS_CRT_FILE             "tls_crt_file"
 #define SU_VAR_TLS_KEY_FILE             "tls_key_file"
 
+#if 0
+#define SU_VAR_APP_UUID                 "application_uuid"
+#define SU_VAR_APP_SHORT_NAME           "application_short_name"
+#define SU_VAR_APP_LONG_NAME            "application_long_name"
+#define SU_VAR_APP_VENDOR               "application_vendor"
+#define SU_VAR_APP_VERSION              "application_version"
+#define SU_VAR_APP_OS                   "application_os"
+#define SU_VAR_APP_LOCATION             "application_location"
+#endif
+
 enum ALARM_STATE { ALARM_NEW, ALARM_ACTIVE, ALARM_INACTIVE };

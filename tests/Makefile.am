@@ -16,12 +16,12 @@ check-local: $(check_PROGRAMS)
 	RES=0; for P in $^ ; do $(VALGRIND) ./$$P || { RES=$$? ; echo "FAILED: $(VALGRIND) ./$$P" >&2; }; done; exit $$RES
 endif
 
-cppunittest_CXXFLAGS = $(CPPUNIT_CFLAGS) $(CPPUNIT_CXXFLAGS) $(CPPUNIT_NUT_CXXFLAGS) $(CXXFLAGS)
+cppunittest_CXXFLAGS = $(CPPUNIT_CFLAGS) $(CPPUNIT_CXXFLAGS) $(CPPUNIT_NUT_CXXFLAGS) $(CXXFLAGS) -I/usr/include/curl
 cppunittest_LDFLAGS = $(CPPUNIT_LIBS)
-cppunittest_LDADD = ../clients/libnutclient.la ../drivers/libnutdrv_mqtt_map.a
+cppunittest_LDADD = ../clients/libnutclient.la ../common/libcommon.la ../drivers/libnutdrv_mqtt_tools.a -lcurl -ljson-c -lssl -lcrypto
 
 # List of src files for CppUnit tests
-CPPUNITTESTSRC = example.cpp nutclienttest.cpp nutdrv_mqtt_map_alarm_test.cpp nutdrv_mqtt_map_sensor_test.cpp nutdrv_mqtt_map_outlet_test.cpp
+CPPUNITTESTSRC = ../common/common.c example.cpp nutclienttest.cpp nutdrv_mqtt_map_alarm_test.cpp nutdrv_mqtt_map_sensor_test.cpp nutdrv_mqtt_map_outlet_test.cpp nutdrv_mqtt_http_test.cpp
 
 cppunittest_SOURCES = $(CPPUNITTESTSRC) cpputest.cpp
 

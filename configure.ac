@@ -268,6 +268,7 @@ AC_ARG_WITH(all,
 		if test -z "${with_usb}"; then with_usb="${withval}"; fi
 		if test -z "${with_snmp}"; then with_snmp="${withval}"; fi
 		if test -z "${with_neon}"; then with_neon="${withval}"; fi
+        if test -z "${with_curl}"; then with_curl="${withval}"; fi
 		if test -z "${with_powerman}"; then with_powerman="${withval}"; fi
 		if test -z "${with_modbus}"; then with_modbus="${withval}"; fi
 		if test -z "${with_mqtt}"; then with_mqtt="${withval}"; fi
@@ -323,6 +324,7 @@ NUT_ARG_WITH([mqtt], [build and install MQTT client driver], [auto])
 NUT_CHECK_LIBMOSQUITTO
 NUT_CHECK_LIBJSONC
 NUT_CHECK_LIBAVAHI
+NUT_CHECK_LIBCURL
 
 dnl ----------------------------------------------------------------------
 dnl additional USB-related checks
@@ -387,6 +389,23 @@ fi
 NUT_REPORT_FEATURE([build neon based XML driver], [${nut_with_neon}], [],
 					[WITH_NEON], [Define to enable Neon HTTP support])
 AM_CONDITIONAL([HAVE_NEON], [test "${nut_have_neon}" = "yes"])
+
+dnl ----------------------------------------------------------------------
+dnl checks related to --with-curl
+
+dnl ${nut_with_curl}: any value except "yes" or "no" is treated as "auto".
+if test "${nut_with_curl}" = "yes" -a "${nut_have_curl}" != "yes"; then
+   AC_MSG_ERROR([curl libraries not found, required for MQTT driver])
+fi
+
+if test "${nut_with_curl}" != "no"; then
+   nut_with_curl="${nut_have_curl}"
+fi
+
+NUT_REPORT_FEATURE([build curl], [${nut_with_curl}], [],
+					[WITH_CURL], [Define to enable curl HTTP support])
+AM_CONDITIONAL([HAVE_CURL], [test "${nut_have_curl}" = "yes"])
+
 
 dnl ----------------------------------------------------------------------
 dnl checks related to --with-avahi
@@ -460,7 +479,7 @@ NUT_ARG_WITH([ipmi], [build and install IPMI PSU driver], [auto])
 NUT_ARG_WITH([freeipmi], [enable IPMI support using FreeIPMI], [auto])
 dnl NUT_ARG_WITH([openipmi], [enable IPMI support using OpenIPMI], [auto])
 
-dnl ${nut_with_ipmi}: any value except "yes" or "no" is treated as "auto". 
+dnl ${nut_with_ipmi}: any value except "yes" or "no" is treated as "auto".
 if test "${nut_with_ipmi}" != "no"; then
    dnl check if FreeIPMI (and maybe later OpenIPMI) was explicitly requested
    if test "${nut_with_freeipmi}" = "yes"; then
@@ -576,7 +595,7 @@ NUT_ARG_WITH([ssl], [enable SSL support (either NSS or OpenSSL)], [auto])
 NUT_ARG_WITH([nss], [enable SSL support using Mozilla NSS], [auto])
 NUT_ARG_WITH([openssl], [enable SSL support using OpenSSL], [auto])
 
-dnl ${nut_with_ssl}: any value except "yes" or "no" is treated as "auto". 
+dnl ${nut_with_ssl}: any value except "yes" or "no" is treated as "auto".
 if test "${nut_with_ssl}" != "no"; then
    dnl check if either NSS or OpenSSL was explicitly requested
    if test "${nut_with_nss}" = "yes"; then
@@ -1705,6 +1724,8 @@ AC_SUBST(LIBUSB_CFLAGS)
 AC_SUBST(LIBUSB_LIBS)
 AC_SUBST(LIBNEON_CFLAGS)
 AC_SUBST(LIBNEON_LIBS)
+AC_SUBST(LIBCURL_CFLAGS)
+AC_SUBST(LIBCURL_LIBS)
 AC_SUBST(LIBAVAHI_CFLAGS)
 AC_SUBST(LIBAVAHI_LIBS)
 AC_SUBST(LIBPOWERMAN_CFLAGS)

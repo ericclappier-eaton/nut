@@ -24,6 +24,7 @@
 
 /**
  * @function map_get_nb_outlets Return the number of outlets
+ * @param outlet_map The outlets array
  * @return {integer} the number of outlet
  */
 int map_get_nb_outlet(outlet_map_t *outlet_map)
@@ -33,6 +34,12 @@ int map_get_nb_outlet(outlet_map_t *outlet_map)
     return outlet_map->nb_outlet;
 }
 
+/**
+ * @function map_init_outlet Init outlets
+ * @param outlet_map The outlets array
+ * @param init_nb_outlet The number of outlet
+ * @return {integer} 0 if success else < 0 
+ */
 int map_init_outlet(outlet_map_t *outlet_map, int init_nb_outlet)
 {
     if (!(outlet_map && init_nb_outlet > 0)) return -1;

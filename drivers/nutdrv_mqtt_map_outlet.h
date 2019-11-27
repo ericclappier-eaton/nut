@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef MAP_OUTLET_H
-#define MAP_OUTLET_H
+#ifndef MQTT_MAP_OUTLET_H
+#define MQTT_MAP_OUTLET_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,5 +52,5 @@ void map_destroy_outlet(outlet_map_t *outlet_map);
 }
 #endif
 
-#endif /* MAP_OUTLET_H */
+#endif /* MQTT_MAP_OUTLET_H */
 
