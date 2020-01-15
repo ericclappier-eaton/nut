@@ -2,6 +2,7 @@
 #   Copyright (C) 2011-2019 Eaton
 # 		Authors:	Frederic Bohe <FredericBohe@Eaton.com>
 #   				Arnaud Quette <ArnaudQuette@Eaton.com>
+#   				Jim Klimov <EvgenyKlimov@Eaton.com>
 #
 #   This program is free software; you can redistribute it and/or modify
 #   it under the terms of the GNU General Public License as published by
