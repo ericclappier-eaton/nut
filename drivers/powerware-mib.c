@@ -135,7 +135,7 @@ static info_lkp_t pw_pwr_info[] = {
 	{ 0, NULL }
 };
 
-static info_lkp_t pw_mode_info[] = {
+    static info_lkp_t pw_mode_info[] = {
 	{   1, ""  },
 	{   2, ""  },
 	{   3, "normal" },

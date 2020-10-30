@@ -411,14 +411,14 @@ static void splitxarg(char *inbuf)
 		val = eqptr;
 	}
 
-    /* see if main handles this first */
-    if (main_arg(buf, val)) {
+	/* see if main handles this first */
+	if (main_arg(buf, val)) {
         free(buf);
-        return;
+		return;
     }
 
-    /* otherwise store it for later */
-    storeval(buf, val);
+	/* otherwise store it for later */
+	storeval(buf, val);
     free(buf);
 }
 
@@ -612,8 +612,9 @@ int main(int argc, char **argv)
 
 	/* Only switch to statepath if we're not powering off */
 	/* This avoid case where ie /var is umounted */
-	if ((!do_forceshutdown) && (chdir(dflt_statepath())))
-		fatal_with_errno(EXIT_FAILURE, "Can't chdir to %s", dflt_statepath());
+    // MODIF_ECL
+	//if ((!do_forceshutdown) && (chdir(dflt_statepath())))
+    //	fatal_with_errno(EXIT_FAILURE, "Can't chdir to %s", dflt_statepath());
 
 	/* Setup signals to communicate with driver once backgrounded. */
 	if ((nut_debug_level == 0) && (!do_forceshutdown)) {

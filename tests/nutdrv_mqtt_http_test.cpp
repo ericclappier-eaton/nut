@@ -21,6 +21,12 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 
+#include <iostream>
+#include <memory>
+#include <type_traits>
+
+
+
 #define CPPUNIT_ASSERT_STREAM(MSG, CONDITION)\
     do {\
         std::ostringstream oss;\
@@ -48,7 +54,16 @@ public:
 CPPUNIT_TEST_SUITE_REGISTRATION(Http_test);
 
 #include "../drivers/nutdrv_mqtt_http.h"
+//#include <secw_consumer_accessor.h>
+
+#include <fty_security_wallet_library.h>
+//#include <fty_common_socket_sync_client.h>
+#include <fty_security_wallet.h>
+
 //#include <secw_producer_accessor.h>
+//#include <secw_exception.h>
+//#include <secw_producer_accessor.h>
+//#include "secw_external_certificate.h"
 
 void Http_test::setUp()
 {
@@ -273,19 +288,20 @@ void Http_test::http_functional_test()
             BIO_free(bio);
 
             /* TBD: add certifcate into security wallet -> caution c++ only */
-            /*fty::SocketSyncClient syncClient("mqtt-test.socket");
+             static const char* endpoint = "inproc://fty-security-walletg-test";
+            fty::SocketSyncClient syncClient("mqtt-test.socket");
             mlm::MlmStreamClient streamClient("mqtt-server-test", SECW_NOTIFICATIONS, 1000, endpoint);
-            ProducerAccessor producerAccessor(syncClient, streamClient);
+            secw::ProducerAccessor producerAccessor(syncClient, streamClient);
             try
             {
-              ExternalCertificatePtr doc = std::make_shared<ExternalCertificate>("Test insert external certificate", serverCertificate);
+              secw::ExternalCertificatePtr doc = std::make_shared<ExternalCertificate>("Test insert external certificate", serverCertificate);
               doc->addUsage("discovery_monitoring");
-              id = producerAccessor.insertNewDocument("default", std::dynamic_pointer_cast<Document>(doc));
+              std::string id = producerAccessor.insertNewDocument("default", std::dynamic_pointer_cast<Document>(doc));
             }
             catch(const std::exception& e)
             {
               printf("Error: %s\n", e.what());
-            }*/
+            }
         }
         if (serverCertificate) free(serverCertificate);
 
