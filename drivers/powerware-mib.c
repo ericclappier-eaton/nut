@@ -302,8 +302,8 @@ static info_lkp_t ambient_drycontacts_polarity_info[] = {
 };
 
 static info_lkp_t ambient_drycontacts_state_info[] = {
-	{ 0, "active" },
-	{ 1, "inactive" },
+	{ 0, "inactive" },
+	{ 1, "active" },
 	{ 0, NULL }
 };
 
